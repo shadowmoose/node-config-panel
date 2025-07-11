@@ -1,4 +1,4 @@
-import { fork } from "node:child_process";
+import { exec, fork } from "node:child_process";
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { type ConfigData } from "./browser.worker.ts";
@@ -7,6 +7,7 @@ import EventEmitter from "events";
 import * as fs from "node:fs";
 import { type AddressInfo, type Server, WebSocket, WebSocketServer } from "ws";
 import { clearInterval } from "node:timers";
+import * as http from "node:http";
 
 
 function launch(opts: ConfigData, controller: AbortController) {
@@ -23,6 +24,22 @@ function launch(opts: ConfigData, controller: AbortController) {
     return child;
 }
 
+async function openUrl(url: string) {
+    const commands = ['start', 'open', 'xdg-open'];
+    for (const cmd of commands) {
+        try {
+            await new Promise((res, rej) => {
+                exec(`${cmd} ${url}`, (error, stdout, stderr) => {
+                    if (error) rej(error);
+                    res(!!error);
+                }).unref();
+            });
+            return true;
+        } catch (_ignored) {}
+    }
+    return false;
+}
+
 /** Valid input types. */
 export const InputType = {
     ...z.coerce,
@@ -35,35 +52,71 @@ export interface CategoryConfig {
 }
 
 export interface ConfigDefinition {
+    /** The Zod type definition for this config element. */
     type: z.ZodType;
+    /** The default value for this config element, if not provided from other sources. */
+    default?: any;
+    /** A short description of this config element, shown as a tooltip in hte UI. */
     description?: string;
+    /** If defined, uses this display name instead of the key. */
     displayName?: string;
+    /** If defined, uses this environment variable name instead of the default PREFIX_CATEGORY_CONFIG. */
     envName?: string;
     /** If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type. */
     toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
+    /** If true, will not generate a label for this config element. Useful when implementing custom `toHtml`. */
     skipLabel?: boolean;
-    /** If true, will not trigger validation on every change, only when `validate()` is called. Useful for text inputs where user may be mid-edit. */
-    skipRealtimeValidate?: boolean;
+    /**
+     * If defined, uses this Zod type name instead of trying to unwrap the type.
+     *
+     * This can be more convenient than redefining the HTML with `toHtml`, if the input type is simple.
+     * For instance, when using zod pipes that should accept simple string inputs.
+     */
+    useZodTypeName?: 'string' | 'number' | 'boolean' | 'enum';
+    /**
+     * If true, will not show this config element in the UI,
+     * but will still load from env or other sources and be available in `values`.
+     */
+    hideFromUI?: boolean;
 }
 
 
 type TypeOfConfigDef<T extends ConfigDefinition> = z.infer<T['type']>;
+type StringKeys<T> = Extract<keyof T, string>;
+/**
+ * Representation of a change event key. Generate these using `ConfigPanel.getChangeKey`.
+ */
+type ChangeEventKey = string & { _fake: never }
 
 /**
  * A configuration panel that can be launched in a browser window.
- *
- * Changes are emitted in real-time as the user makes them, using the following events:
- * - `change` - Emitted on any change, with `{ path: string[], value: any }`.
- * - `change.CATEGORY` - Emitted on specific config changes within the given category, with `{ path: string[], value: any }`.
- * - `change.CATEGORY.KEY` - Emitted on specific config changes, with the new value.
- * - `values` - Emitted on any change, with the full current values object.
- *
- * Also emits:
- * - `error` - Emitted if an asynchronous error occurs.
- * - `invalid_change` - Emitted if a change fails validation, with `{ path: string[], value: any, error: Error }`.
- * - `exit` - Emitted when the panel is closed, with the exit reason.
- *
  */
+export interface ConfigPanel<
+    CATS extends Record<string, CategoryConfig>,
+    DEFS extends Record<keyof CATS, Record<string, ConfigDefinition>>,
+    VALS extends { [cat in keyof CATS]: { [key in keyof DEFS[cat]]: TypeOfConfigDef<DEFS[cat][key]> } },
+> {
+    /** Emitted when any config value changes, with the specific config that changed. */
+    on(event: 'change', callback: { (data: { path: string[], value: any }): void }): this;
+    /** Emitted when any config value changes, within the given category. */
+    on<Cat extends StringKeys<CATS>>(
+        event: `change.${Cat}`,
+        callback: { (data: { path: string[], value: any }): void }
+    ): this;
+    /** Emitted when a specific config value changes. */
+    on<Cat extends StringKeys<CATS>>(event: ChangeEventKey, callback: { (data: { path: string[], value: any }): void }): this;
+    /** Emitted when any config value changes, with a map of all current values. */
+    on(event: 'values', callback: { (data: VALS): void }): this;
+    /** Emitted when an asynchronous error occurs. */
+    on(event: 'error', callback: { (err: Error): void }): this;
+    /** Emitted when a change fails validation. */
+    on(event: 'invalid_change', callback: { (data: { path: string[], rawValue: any, error: Error }): void }): this;
+    /** Emitted when the panel is closed, with the exit reason. */
+    on(event: 'exit', callback: { (reason: string): void }): this;
+    /** Emitted when the internal HTTP/WebSocket server starts, with the port number. */
+    on(event: 'port', callback: { (port: number): void }): this;
+}
+
 export class ConfigPanel <
     CATS extends Record<string, CategoryConfig>,
     DEFS extends Record<keyof CATS, Record<string, ConfigDefinition>>,
@@ -73,11 +126,14 @@ export class ConfigPanel <
     private readonly abortCtrl = new AbortController();
     private categories: CATS;
     private readonly configMap: DEFS;
+    private readonly rawInputMap: Record<any, any> = {};
+    private isValueMapDirty = true;
     private valueMap: VALS = {} as any;
     private zodSchema: z.ZodObject;
     private wss: Server|null = null;
     private wssPort: number = 0;
     private wssPing: any = null;
+    private server: http.Server|null = null;
 
     constructor(cats: CATS, defs: DEFS) {
         super();
@@ -89,19 +145,19 @@ export class ConfigPanel <
         for (const catKey in defs) {
             if (!cats[catKey].displayName) cats[catKey].displayName = catKey;
             const configs = defs[catKey];
-            const map = this.valueMap[catKey] = this.valueMap[catKey] || {} as any;
             const validatorCat: any = {};
             for (const confKey in configs) {
                 const confDef = configs[confKey];
                 if (!confDef.displayName) confDef.displayName = confKey;
-                map[confKey] = (confDef.type.def as any).defaultValue;
                 validatorCat[confKey] = confDef.type;
+                this.setRawValue([catKey, confKey], confDef.default || (confDef.type.def as any).defaultValue);
             }
             validatorSchema[catKey] = z.object(validatorCat);
         }
         this.zodSchema = z.object(validatorSchema);
         // Register listener for abort cleanup.
         this.abortCtrl.signal.addEventListener('abort', (reason) => {
+            this.server?.close();
             this.wss?.close();
             clearInterval(this.wssPing);
             this.child?.kill();
@@ -126,7 +182,7 @@ export class ConfigPanel <
                 const conf = this.configMap[confCat][confKey];
                 const envKey = (conf.envName || `${prefix}${confCat}_${confKey}`).toLowerCase();
                 if (envKey in lcEnv) {
-                    (this.valueMap[confCat] as any)[confKey] = conf.type.parse(lcEnv[envKey]);
+                    this.setRawValue([confCat, confKey], lcEnv[envKey]);
                 }
             }
         }
@@ -140,21 +196,95 @@ export class ConfigPanel <
         }
         const text = fs.readFileSync(filePath, 'utf-8');
         const obj = JSON.parse(text);
-        this.valueMap = this.zodSchema.parse(obj) as any;
+        Object.assign(this.rawInputMap, obj);
+        this.isValueMapDirty = true;
         return this;
     }
 
     toJSON(filePath: string) {
-        fs.writeFileSync(filePath, JSON.stringify(this.values, null, 2), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(this.rawInputMap, null, 2), 'utf-8');
         return this;
     }
 
     //TODO: fromYaml(filePath: string, ignoreMissing = false)
 
-    private async startWss() {
-        if (this.wss) return;
-        this.wss = new WebSocketServer({ port: 0 });
+    /**
+     * Set a raw input value.
+     * If defConfig is provided, will parse and validate the value immediately before setting.
+     * Otherwise, will mark the value map as dirty to be re-validated on next access.
+     * @param path
+     * @param rawValue
+     * @param defConfig
+     * @returns The parsed value if defConfig is provided, otherwise null.
+     */
+    private setRawValue<T extends ConfigDefinition>(path: string[], rawValue: any, defConfig?: T): z.infer<T['type']> {
+        let rawNode: any = this.rawInputMap;
+        let valueNode: any = this.valueMap;
+        for (let i = 0; i < path.length - 1; ++i) {
+            const part = path[i];
+            rawNode = rawNode[part] = rawNode[part] || {};
+            valueNode = valueNode[part] = valueNode[part] || {};
+        }
+
+        let parsed = null;
+        if (defConfig) {
+            parsed = valueNode[path[path.length - 1]] = defConfig.type.parse(rawValue);
+        } else {
+            this.isValueMapDirty = true;
+        }
+        rawNode[path[path.length - 1]] = rawValue;
+
+        return parsed as any;
+    }
+
+    /**
+     * Get the ConfigDefinition for a given path.
+     */
+    private getConfigDefinition(path: string[]) {
+        let node: any = this.configMap;
+        for (let i = 0; i < path.length; ++i) {
+            const part = path[i];
+            if (!(part in node)) throw Error('Invalid config path: ' + path.join('.'));
+            node = node[part];
+        }
+        return node as ConfigDefinition;
+    }
+
+    private *allCatsAndVals() {
+        for (const catKey in this.configMap) {
+            for (const confKey in this.configMap[catKey]) {
+                const confDef = this.configMap[catKey][confKey];
+                const currentRawValue = this.rawInputMap[catKey]?.[confKey];
+                yield {
+                    path: [catKey, confKey],
+                    catKey,
+                    confKey,
+                    confDef,
+                    currentRawValue
+                };
+            }
+        }
+    }
+
+    private async startWss(config: Partial<ConfigData>|undefined) {
+        if (this.server) return;
+        this.server = http.createServer((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(
+                makePageHTML(
+                    config?.windowOptions?.title || 'Config Panel',
+                    (config?.htmlHeader || '') + this.buildHtml() + (config?.htmlFooter || ''),
+                    config?.style || '',
+                )
+            );
+        });
+        this.wss = new WebSocketServer({ server: this.server });
         this.wss.on('connection',  (ws: WebSocket & { isAlive: boolean }) => {
+            const sendParseError = (err: any, id: string, path: string[], rawValue: any) => {
+                const error = err.issues?.map((e: any) => e.message).join('; ') || err.message || err;
+                this.sendWss({ id, error });
+                this.emit('invalid_change', { path, rawValue, error: err });
+            }
             ws.isAlive = true;
             ws.on('error', console.error);
             ws.on('pong', () => ws.isAlive = true);
@@ -162,6 +292,9 @@ export class ConfigPanel <
                 this.emit('error', err);
                 ws.terminate();
             });
+            ws.on('close', () => {
+                if (config?.killOnClose ?? true) this.closePanel('panel closed by user');
+            })
             ws.on('message', (message: string) => {
                 const msg = JSON.parse(message);
                 if (msg['path']) {
@@ -169,13 +302,18 @@ export class ConfigPanel <
                         this.onValueChange(msg.path, msg.value);
                         this.sendWss({ ok: msg.id });
                     } catch (err: any) {
-                        const error = err.issues?.map((e: any) => e.message).join('; ') || err.message || err;
-                        this.sendWss({ id: msg.id, error });
-                        this.emit('invalid_change', { path: msg.path, value: msg.value, error: err });
+                        sendParseError(err, msg.id, msg.path, msg.value);
                     }
                 }
             });
+            for (const data of this.allCatsAndVals()) {
+                // Validate all existing values individually and send any errors to the client.
+                try { data.confDef.type.parse(data.currentRawValue) } catch (err: any) {
+                    sendParseError(err, pathToElementId(data.path), data.path, data.currentRawValue);
+                }
+            }
         });
+        this.server.listen(config?.port || 0, config?.host || 'localhost');
         this.wssPort = await new Promise<number>(resolve => {
             this.wss?.once('listening', () => {
                 resolve((this.wss?.address() as AddressInfo)?.port);
@@ -192,6 +330,7 @@ export class ConfigPanel <
                 ws.ping();
             });
         }, 30_000).unref();
+        this.emit('port', this.wssPort);
     }
 
     /**
@@ -207,23 +346,47 @@ export class ConfigPanel <
     }
 
     /**
+     * Helper function to generate an event key for a given category and optional config key name.
+     *
+     * Example usage:
+     * ```typescript
+     * testPanel.on(testPanel.getChangeKey('test_cat', 'test_number'), data => console.log(data));
+     * ```
+     */
+    getChangeKey<C extends string & keyof DEFS, P extends string & keyof DEFS[C]>(cat: C, def?: P): ChangeEventKey {
+        return (`change.${cat}` + def ? `.${def}` : '') as any;
+    }
+
+    /**
      * Launch the configuration panel in a system browser window.
      */
     async startInterface(config?: Partial<ConfigData>) {
-        await this.startWss();
-        this.child = launch({
-            ...config,
-            body: this.buildHtml(),
-            port: this.wssPort,
-        }, this.abortCtrl);
-        this.child.on('error', (err) =>{
-            if (!this.abortCtrl.signal.aborted) {
-                this.emit('error', err);
+        const displayMethod = config?.displayMethod || 'webview';
+        await this.startWss(config);
+
+        if (displayMethod === 'browser') {
+            if (!await openUrl(`http://localhost:${this.wssPort}`)) {
+                this.emit(
+                    'error',
+                    Error('Failed to open URL in a browser: http://localhost:'+this.wssPort)
+                );
             }
-        });
-        this.child.once('exit', (code) => {
-            this.closePanel('exit' + (code ? ` code ${code}` : ''));
-        });
+        } else if (displayMethod === 'webview') {
+            this.child = launch({
+                ...config,
+                port: this.wssPort,
+            }, this.abortCtrl);
+            this.child.on('error', (err) => {
+                if (!this.abortCtrl.signal.aborted) {
+                    this.emit('error', err);
+                }
+            });
+            this.child.once('exit', (code) => {
+                if (config?.killOnClose ?? true) {
+                    this.closePanel('exit' + (code ? ` code ${code}` : ''));
+                }
+            });
+        }
         return this;
     }
 
@@ -246,7 +409,7 @@ export class ConfigPanel <
      * Returns true if the configuration panel is currently open and running.
      */
     get isRunning() {
-        return !this.abortCtrl.signal.aborted && this.child && !this.child.killed;
+        return !this.abortCtrl.signal.aborted;
     }
 
     /**
@@ -257,13 +420,24 @@ export class ConfigPanel <
     }
 
     /**
+     * The port the internal websocket server is running on, for advanced use cases.
+     */
+    get httpPort() {
+        return this.wssPort;
+    }
+
+    /**
      * Current configuration values, updated in real-time as the user makes changes.
      *
      * Note that these values are not always validated until `validate()` is called.
      * If realtime, validated values are needed, call `validate()` and use the result.
      */
     get values(): VALS {
-        return this.valueMap as any;
+        if (this.isValueMapDirty) {
+            this.valueMap = this.zodSchema.parse(this.rawInputMap) as any;
+            this.isValueMapDirty = false;
+        }
+        return this.valueMap as VALS;
     }
 
     /**
@@ -278,7 +452,7 @@ export class ConfigPanel <
     }
 
     /**
-     * Wait for the configuration panel to close, then validate and return all Config values.
+     * Wait for the configuration panel to close, then return all Config values.
      *
      * This does not trigger the panel to close, call `closePanel()` first if needed -
      * otherwise this will wait for the user to close the panel.
@@ -287,15 +461,9 @@ export class ConfigPanel <
         if (this.isRunning) {
             await new Promise<void>(resolve => this.once('exit', () => resolve()));
         }
-        return this.validate();
+        return this.values;
     }
 
-    /**
-     * Validate the current configuration values and return them, or throw if invalid.
-     */
-    validate(): VALS {
-        return this.zodSchema.parse(this.valueMap) as any;
-    }
 
     private buildHtml() {
         const cats = Object.entries(this.categories).map(([catName, def]) => {
@@ -304,9 +472,10 @@ export class ConfigPanel <
                 ${ def.description ? `<p class="description ${catName}">${def.description}</p>` : '' }
                 <div class="configs">
                 ${Object.entries(this.configMap[catName]).map(([confName, confDef]) => {
-                    const currentValue = this.valueMap[catName]?.[confName];
+                    if (confDef.hideFromUI) return;
+                    const currentValue = this.rawInputMap[catName]?.[confName];
                     return formatElementHtml([catName, confName], confDef, currentValue);
-                }).join('\n')}
+                }).filter(e=>e).join('\n')}
                 </div>
             </div>`
         });
@@ -314,26 +483,23 @@ export class ConfigPanel <
     }
 
     private onValueChange(path: string[], value: any) {
-        let node: any = this.valueMap;
-        let zodType: any = this.configMap;
-        const propName = path[path.length - 1];
-        for (let i = 0; i < path.length - 1; ++i) {
-            const part = path[i];
-            if (!(part in node)) node[part] = {};
-            node = node[part];
-            zodType = zodType[part];
+        const config = this.getConfigDefinition(path);
+        const parsedVal = this.setRawValue(path, value, config);
+
+        this.emit('change', { path, value: parsedVal });
+        this.emit(this.getChangeKey(path[0]), { path, value: parsedVal });
+        this.emit(this.getChangeKey(path[0], path[1]), parsedVal);
+        try {
+            this.emit('values', this.values);
+        } catch (err) {
+            this.emit('error', err);
         }
-        const skipValidate = zodType[propName].skipRealtimeValidate;
-        if (!skipValidate) {
-            zodType = zodType[propName]['type'];
-            value = zodType.parse(value);
-        }
-        node[propName] = value;
-        this.emit('change', { path, value });
-        this.emit('change.'+path[0], { path, value });
-        this.emit('change.'+path.join('.'), value);
-        this.emit('values', this.valueMap);
     }
+}
+
+
+function pathToElementId(path: string[]) {
+    return Buffer.from(JSON.stringify(path)).toString('base64');
 }
 
 function formatElementHtml(path: string[], confDef: ConfigDefinition, currentValue: any): string {
@@ -341,19 +507,19 @@ function formatElementHtml(path: string[], confDef: ConfigDefinition, currentVal
     let quoteVal = JSON.stringify(currentValue || '');
     if (quoteVal[0] !== '"') quoteVal = `"${quoteVal}"`; // Ensure it's a string in quotes for HTML attributes
 
-    const eleName = Buffer.from(JSON.stringify(path)).toString('base64');
+    const eleId = pathToElementId(path);
     html = html
-        .replaceAll('data-id', `id="${eleName}"`)
+        .replaceAll('data-id', `id="${eleId}"`)
         .replaceAll('data-raw-name', path[path.length - 1])
         .replaceAll('data-checked', currentValue ? 'checked' : '')
         .replaceAll('VAL', quoteVal);
 
     if (!confDef.skipLabel) {
-        html = `<label for="${eleName}">${confDef.displayName}</label>${html}`;
+        html = `<label for="${eleId}">${confDef.displayName}</label>${html}`;
     }
     return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')}" title="${confDef.description || ''}">
         ${html}
-        <div id="error-${eleName}" class="error_msg error_mesg_${confDef.type.def.type}"></div>
+        <div id="error-${eleId}" class="error_msg error_mesg_${confDef.type.def.type}"></div>
     </div>`;
 }
 
@@ -388,7 +554,7 @@ function findZodOptions(zo: z.ZodType): string[] {
 function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
     if (conf.toHtml) return conf.toHtml(conf, currentValue);
 
-    const type = unwrapZod(conf.type);
+    const type = conf.useZodTypeName || unwrapZod(conf.type);
 
     switch (type) {
         case 'string':
@@ -405,6 +571,95 @@ function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
             }).join('\n');
             return `<select data-id>${options}</select>`;
         default:
-            return `<div>Not implemented type: ${type}</div>`;
+            return `<div>Not implemented type: ${type}. Provide custom element HTML with "toHtml".</div>`;
     }
+}
+
+function makePageHTML(title: string, body: string, style: string,) {
+    return `<!DOCTYPE html>
+<html lang="en-us">
+    <head>
+        <title>${title}</title>
+        <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f6f8fa;
+            color: #222;
+            margin: 10px;
+            padding: 0;
+        }
+        
+        body .category {
+            max-width: 800px;
+            margin: 1rem auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            padding: 1rem;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            margin-right: 0.5rem;
+            display: inline-block;
+        }
+        .error_msg {
+            color: red;
+            font-size: small;
+        }
+        .description {
+            font-size: small;
+            font-style: italic;
+            color: #555;
+            margin-bottom: 0.5rem;
+            margin-top: 0;
+        }
+        h2 {
+            font-size: 1.5rem;
+            margin: 0;
+            padding: 0;
+        }
+        ${style || ''}
+        </style>
+    </head>
+    <body>
+        ${body}
+        <script>
+            const inputs = document.querySelectorAll('input, textarea, select');
+            const values = {};
+            
+            const socket = new WebSocket("ws://"+document.location.host);
+            
+            socket.addEventListener("close", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
+            socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
+            socket.addEventListener("message", (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    document.getElementById('error-'+data.id).textContent = data.error;
+                }
+                if (data.ok) {
+                    document.getElementById('error-'+data.ok).textContent = '';
+                }
+            });
+            
+            const sendValue = (path, value, id) => socket.send(JSON.stringify({ path, value, id }));
+            
+            inputs.forEach(input => {
+                const name = input.id;
+                const path = JSON.parse(atob(name));
+                if (!name || !path) return;
+                
+                switch (input.type) { 
+                    case 'checkbox':
+                    case 'radio':
+                        input.addEventListener('change', () => sendValue(path, input.checked, name));
+                        break;
+                    default:
+                        input.addEventListener('input', () => sendValue(path, input.value, name));
+                }
+            });
+        </script>
+    </body>
+</html>
+`;
 }

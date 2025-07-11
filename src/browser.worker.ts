@@ -6,9 +6,28 @@ const isWorker = !!process.send;
 export interface ConfigData {
     windowOptions?: BrowserWindowOptions,
     webviewOptions?: WebviewOptions & { openDevtools?: boolean },
+    /** Custom CSS to inject into the panel. */
     style?: string,
-    body: string,
+    /** Extra custom HTML to inject into the panel before the categories (e.g. for custom header). */
+    htmlHeader?: string,
+    /** Extra custom HTML to inject into the panel after the categories (e.g. for custom footer). */
+    htmlFooter?: string,
+    /** Port to run local server on. Defaults to 0 (random available port). */
     port: number,
+    /** Host to run local server on. Defaults to 'localhost'. */
+    host?: string,
+    /**
+     * How to display the panel.
+     * + `webview` (default) uses an embedded webview window,
+     * + `browser` opens the default system browser,
+     * + `none` does not open any window. The server URL must be opened manually.
+     */
+    displayMethod?: 'webview'|'browser'|'none',
+    /**
+     * Whether to kill the listening server when the window/browser is closed.
+     * Defaults to true.
+     */
+    killOnClose?: boolean,
 }
 
 export function startPanel(optConfig?: ConfigData) {
@@ -43,90 +62,7 @@ function bootBrowser(config: ConfigData) {
     });
 
     const webview = window.createWebview({
-        html: `<!DOCTYPE html>
-        <html lang="en-us">
-            <head>
-                <title>Loading...</title>
-                <style>
-                body {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    background: #f6f8fa;
-                    color: #222;
-                    margin: 10px;
-                    padding: 0;
-                }
-                
-                body .category {
-                    max-width: 800px;
-                    margin: 1rem auto;
-                    background: #fff;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-                    padding: 1rem;
-                }
-                label {
-                    font-weight: bold;
-                    margin-bottom: 0.5rem;
-                    margin-right: 0.5rem;
-                    display: inline-block;
-                }
-                .error_msg {
-                    color: red;
-                }
-                .description {
-                    font-size: 0.9rem;
-                    color: #555;
-                    margin-bottom: 0.5rem;
-                    margin-top: 0;
-                }
-                h2 {
-                    font-size: 1.5rem;
-                    margin: 0;
-                    padding: 0;
-                }
-                ${config.style || ''}
-                </style>
-            </head>
-            <body>
-                ${config.body}
-                <script>
-                    const inputs = document.querySelectorAll('input, textarea, select');
-                    const values = {};
-                    
-                    const socket = new WebSocket("ws://localhost:${config.port}");
-                    
-                    socket.addEventListener("close", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
-                    socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
-                    socket.addEventListener("message", (event) => {
-                        const data = JSON.parse(event.data);
-                        if (data.error) {
-                            document.getElementById('error-'+data.id).textContent = data.error;
-                        }
-                        if (data.ok) {
-                            document.getElementById('error-'+data.ok).textContent = '';
-                        }
-                    });
-                    
-                    const sendValue = (path, value, id) => socket.send(JSON.stringify({ path, value, id }));
-                    
-                    inputs.forEach(input => {
-                        const name = input.id;
-                        const path = JSON.parse(atob(name));
-                        if (!name || !path) return;
-                        
-                        switch (input.type) { 
-                            case 'checkbox':
-                            case 'radio':
-                                input.addEventListener('change', () => sendValue(path, input.checked, name));
-                                break;
-                            default:
-                                input.addEventListener('input', () => sendValue(path, input.value, name));
-                        }
-                    });
-                </script>
-            </body>
-        </html>
-        `,
+        url: `http://localhost:${config.port}`,
         transparent: false,
         enableDevtools: true,
         ...config.webviewOptions,
