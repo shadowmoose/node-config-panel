@@ -118,7 +118,7 @@ export class ConfigPanel <
     fromEnvironment(prefix: string = '') {
         // TODO: Maybe call a dotenv load first?
         const lcEnv = Object.entries(process.env).reduce(
-            (acc, [k,v]) => { acc[k.toLowerCase().replaceAll('_', '')] = `${v}`; return acc }
+            (acc, [k,v]) => { acc[k.toLowerCase()] = `${v}`; return acc }
         ,{} as Record<string,string>);
 
         for (const confCat in this.configMap) {
@@ -126,7 +126,7 @@ export class ConfigPanel <
                 const conf = this.configMap[confCat][confKey];
                 const envKey = (conf.envName || `${prefix}${confCat}_${confKey}`).toLowerCase();
                 if (envKey in lcEnv) {
-
+                    (this.valueMap[confCat] as any)[confKey] = conf.type.parse(lcEnv[envKey]);
                 }
             }
         }

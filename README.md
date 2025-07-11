@@ -42,7 +42,7 @@ const testPanel = new ConfigPanel({
     cat_2: {
         test_enum: {
             type: InputType.enum(["Salmon", "Tuna", "Trout"]).default('Tuna'),
-            displayName: 'Test Enum',
+            envName: 'FISH_TYPE', // Custom environment variable name.
         }
     }
 });

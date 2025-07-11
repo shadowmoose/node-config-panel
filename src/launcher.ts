@@ -25,7 +25,7 @@ const testPanel = new ConfigPanel({
     cat_2: {
         test_enum: {
             type: InputType.enum(["Salmon", "Tuna", "Trout"]).default('Tuna'),
-            displayName: 'Test Enum',
+            envName: 'FISH_TYPE',
         }
     }
 });
@@ -48,7 +48,6 @@ await testPanel
         },
     });
 
-setTimeout(() => testPanel.closePanel(), 10_000);
 const results = await testPanel.waitForClose();
 
 console.log('Validated input config:', results);
