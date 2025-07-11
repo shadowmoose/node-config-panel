@@ -31,16 +31,17 @@ jobs:
           cache: 'pnpm'
           registry-url: https://registry.npmjs.org
 
-      - name: Bump Version of package.json
+      - name: Set Package Version in package.json
         uses: ramonpaolo/bump-version@v2.3.1
         with:
           tag: ${{ inputs.version }}
           commit: false
 
-      - run: cat package.json
-
-      - name: Install dependencies
+      - name: Install Dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
 
       - name: Publish to NPM
         shell: bash
