@@ -5,9 +5,11 @@ import { startPanel } from "./browser.worker.js";
 import { z } from "zod";
 import EventEmitter from "events";
 import * as fs from "node:fs";
+import { WebSocket, WebSocketServer } from "ws";
+import { clearInterval } from "node:timers";
 function launch(opts, controller) {
     if (process.send !== undefined)
-        throw Error('Not running as a worker process');
+        throw Error('Cannot run as a worker process!');
     const __filename = fileURLToPath(import.meta.url);
     const fileExt = path.extname(__filename);
     const __dirname = path.dirname(__filename);
@@ -39,6 +41,9 @@ export class ConfigPanel extends EventEmitter {
         this.abortCtrl = new AbortController();
         this.valueMap = {};
         this.running = false;
+        this.wss = null;
+        this.wssPort = 0;
+        this.wssPing = null;
         this.categories = cats;
         this.configMap = defs;
         // Build full Zod schema and set default values.
@@ -98,32 +103,86 @@ export class ConfigPanel extends EventEmitter {
         // TODO: Implement loading from YAML file.
         return this;
     }
+    async startWss() {
+        if (this.wss)
+            return;
+        this.wss = new WebSocketServer({ port: 0 });
+        this.wss.on('connection', (ws) => {
+            ws.isAlive = true;
+            console.log('WebSocket client connected');
+            ws.on('error', console.error);
+            ws.on('pong', () => ws.isAlive = true);
+            ws.on('error', err => {
+                this.emit('error', err);
+                ws.terminate();
+            });
+            ws.on('message', (message) => {
+                var _a;
+                const msg = JSON.parse(message);
+                if (msg['path']) {
+                    try {
+                        this.onValueChange(msg.path, msg.value);
+                        this.sendWss({ ok: msg.id });
+                    }
+                    catch (err) {
+                        const error = ((_a = err.issues) === null || _a === void 0 ? void 0 : _a.map((e) => e.message).join('; ')) || err.message || err;
+                        this.sendWss({ id: msg.id, error });
+                        this.emit('invalid_change', { path: msg.path, value: msg.value, error: err });
+                    }
+                }
+            });
+        });
+        this.wssPort = await new Promise(resolve => {
+            var _a;
+            (_a = this.wss) === null || _a === void 0 ? void 0 : _a.once('listening', () => {
+                var _a, _b;
+                resolve((_b = (_a = this.wss) === null || _a === void 0 ? void 0 : _a.address()) === null || _b === void 0 ? void 0 : _b.port);
+            });
+        });
+        this.wssPing = setInterval(() => {
+            var _a, _b;
+            if (!this.isRunning) {
+                (_a = this.wss) === null || _a === void 0 ? void 0 : _a.close();
+                return clearInterval(this.wssPing);
+            }
+            (_b = this.wss) === null || _b === void 0 ? void 0 : _b.clients.forEach((ws) => {
+                if (!ws.isAlive)
+                    return ws.terminate();
+                ws.isAlive = false;
+                ws.ping();
+            });
+        }, 30000).unref();
+    }
+    /**
+     * Send data to all connected websocket clients.
+     * @private
+     */
+    sendWss(data) {
+        var _a;
+        (_a = this.wss) === null || _a === void 0 ? void 0 : _a.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(data));
+            }
+        });
+    }
     /**
      * Launch the configuration panel in a system browser window.
      */
-    startInterface(config) {
+    async startInterface(config) {
+        await this.startWss();
         this.running = true;
-        this.child = launch(Object.assign(Object.assign({}, config), { body: this.buildHtml() }), this.abortCtrl);
+        this.child = launch(Object.assign(Object.assign({}, config), { body: this.buildHtml(), port: this.wssPort }), this.abortCtrl);
         this.child.on('error', (err) => {
             if (!this.abortCtrl.signal.aborted) {
                 this.emit('error', err);
             }
         });
         this.child.once('exit', (code) => {
+            var _a;
             this.running = false;
+            (_a = this.wss) === null || _a === void 0 ? void 0 : _a.close();
+            clearInterval(this.wssPing);
             this.emit('exit', code);
-        });
-        this.child.on('message', (message) => {
-            const msg = JSON.parse(message);
-            if (msg['path']) {
-                try {
-                    this.onValueChange(msg.path, msg.value);
-                }
-                catch (err) {
-                    this.emit('error', err);
-                    this.emit('invalid_change', { path: msg.path, value: msg.value, error: err });
-                }
-            }
         });
         return this;
     }
@@ -133,7 +192,7 @@ export class ConfigPanel extends EventEmitter {
      * This call currently doesn't work, as the library has an internal error, but may work in the future.
      */
     startInterfaceSync(config) {
-        const result = startPanel(Object.assign(Object.assign({}, config), { body: this.buildHtml() }));
+        const result = startPanel(Object.assign(Object.assign({}, config), { body: this.buildHtml(), port: this.wssPort }));
         this.valueMap = this.zodSchema.parse(result);
         return this;
     }
@@ -239,7 +298,10 @@ function formatElementHtml(path, confDef, currentValue) {
     if (!confDef.skipLabel) {
         html = `<label for="${eleName}">${confDef.displayName}</label>${html}`;
     }
-    return `<div class="option ${confDef.type.def.type} ${path.map(p => `p_${p}`).join(' ')}" title="${confDef.description || ''}">${html}</div>`;
+    return `<div class="option ${confDef.type.def.type} ${path.map(p => `p_${p}`).join(' ')}" title="${confDef.description || ''}">
+        ${html}
+        <div id="error-${eleName}" class="error_msg error_mesg_${confDef.type.def.type}"></div>
+    </div>`;
 }
 /**
  * Strip away wrappers like optional, nullable, etc. to get to the core type.
@@ -277,7 +339,7 @@ function makeElementHtml(conf, currentValue) {
         case 'string':
             return `<input type="text" data-id value=VAL/>`;
         case 'number':
-            return `<input type="number" data-id value=VAL min="0" max="100"/>`;
+            return `<input type="number" data-id value=VAL />`;
         case 'boolean':
             return `<input type="checkbox" data-id data-checked />`;
         case 'enum':

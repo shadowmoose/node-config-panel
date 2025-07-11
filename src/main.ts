@@ -5,10 +5,12 @@ import { type ConfigData, startPanel } from "./browser.worker.ts";
 import { z } from "zod";
 import EventEmitter from "events";
 import * as fs from "node:fs";
+import { type AddressInfo, type Server, WebSocket, WebSocketServer } from "ws";
+import { clearInterval } from "node:timers";
 
 
 function launch(opts: ConfigData, controller: AbortController) {
-    if (process.send !== undefined) throw Error('Not running as a worker process');
+    if (process.send !== undefined) throw Error('Cannot run as a worker process!');
 
     const __filename = fileURLToPath(import.meta.url);
     const fileExt = path.extname(__filename);
@@ -74,6 +76,9 @@ export class ConfigPanel <
     private valueMap: VALS = {} as any;
     private running = false;
     private zodSchema: z.ZodObject;
+    private wss: Server|null = null;
+    private wssPort: number = 0;
+    private wssPing: any = null;
 
     constructor(cats: CATS, defs: DEFS) {
         super();
@@ -143,14 +148,72 @@ export class ConfigPanel <
         return this;
     }
 
+    private async startWss() {
+        if (this.wss) return;
+        this.wss = new WebSocketServer({ port: 0 });
+        this.wss.on('connection',  (ws: WebSocket & { isAlive: boolean }) => {
+            ws.isAlive = true;
+            console.log('WebSocket client connected');
+            ws.on('error', console.error);
+            ws.on('pong', () => ws.isAlive = true);
+            ws.on('error', err => {
+                this.emit('error', err);
+                ws.terminate();
+            });
+            ws.on('message', (message: string) => {
+                const msg = JSON.parse(message);
+                if (msg['path']) {
+                    try {
+                        this.onValueChange(msg.path, msg.value);
+                        this.sendWss({ ok: msg.id });
+                    } catch (err: any) {
+                        const error = err.issues?.map((e: any) => e.message).join('; ') || err.message || err;
+                        this.sendWss({ id: msg.id, error });
+                        this.emit('invalid_change', { path: msg.path, value: msg.value, error: err });
+                    }
+                }
+            });
+        });
+        this.wssPort = await new Promise<number>(resolve => {
+            this.wss?.once('listening', () => {
+                resolve((this.wss?.address() as AddressInfo)?.port);
+            });
+        });
+        this.wssPing = setInterval(() => {
+            if (!this.isRunning) {
+                this.wss?.close();
+                return clearInterval(this.wssPing);
+            }
+            this.wss?.clients.forEach((ws: any) => {
+                if (!ws.isAlive) return ws.terminate();
+                ws.isAlive = false;
+                ws.ping();
+            });
+        }, 30_000).unref();
+    }
+
+    /**
+     * Send data to all connected websocket clients.
+     * @private
+     */
+    private sendWss(data: any) {
+        this.wss?.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(data));
+            }
+        });
+    }
+
     /**
      * Launch the configuration panel in a system browser window.
      */
-    startInterface(config?: Partial<ConfigData>) {
+    async startInterface(config?: Partial<ConfigData>) {
+        await this.startWss();
         this.running = true;
         this.child = launch({
             ...config,
             body: this.buildHtml(),
+            port: this.wssPort,
         }, this.abortCtrl);
         this.child.on('error', (err) =>{
             if (!this.abortCtrl.signal.aborted) {
@@ -159,18 +222,9 @@ export class ConfigPanel <
         });
         this.child.once('exit', (code) => {
             this.running = false;
+            this.wss?.close();
+            clearInterval(this.wssPing);
             this.emit('exit', code);
-        });
-        this.child.on('message', (message: string) => {
-            const msg = JSON.parse(message);
-            if (msg['path']) {
-                try {
-                    this.onValueChange(msg.path, msg.value);
-                } catch (err) {
-                    this.emit('error', err);
-                    this.emit('invalid_change', { path: msg.path, value: msg.value, error: err });
-                }
-            }
         });
         return this;
     }
@@ -184,6 +238,7 @@ export class ConfigPanel <
         const result = startPanel({
             ...config,
             body: this.buildHtml(),
+            port: this.wssPort,
         });
         this.valueMap = this.zodSchema.parse(result) as any;
         return this;
@@ -298,7 +353,10 @@ function formatElementHtml(path: string[], confDef: ConfigDefinition, currentVal
     if (!confDef.skipLabel) {
         html = `<label for="${eleName}">${confDef.displayName}</label>${html}`;
     }
-    return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')}" title="${confDef.description || ''}">${html}</div>`;
+    return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')}" title="${confDef.description || ''}">
+        ${html}
+        <div id="error-${eleName}" class="error_msg error_mesg_${confDef.type.def.type}"></div>
+    </div>`;
 }
 
 /**
@@ -328,6 +386,7 @@ function findZodOptions(zo: z.ZodType): string[] {
     throw Error('Not an enum type!');
 }
 
+
 function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
     if (conf.toHtml) return conf.toHtml(conf, currentValue);
 
@@ -337,7 +396,7 @@ function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
         case 'string':
             return `<input type="text" data-id value=VAL/>`;
         case 'number':
-            return `<input type="number" data-id value=VAL min="0" max="100"/>`;
+            return `<input type="number" data-id value=VAL />`;
         case 'boolean':
             return `<input type="checkbox" data-id data-checked />`;
         case 'enum':

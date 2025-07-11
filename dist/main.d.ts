@@ -53,6 +53,9 @@ export declare class ConfigPanel<CATS extends Record<string, CategoryConfig>, DE
     private valueMap;
     private running;
     private zodSchema;
+    private wss;
+    private wssPort;
+    private wssPing;
     constructor(cats: CATS, defs: DEFS);
     /**
      * Load configuration values from environment variables.
@@ -64,10 +67,16 @@ export declare class ConfigPanel<CATS extends Record<string, CategoryConfig>, DE
     fromJson(filePath: string, ignoreMissing?: boolean): this;
     toJSON(filePath: string): this;
     fromYaml(filePath: string, ignoreMissing?: boolean): this;
+    private startWss;
+    /**
+     * Send data to all connected websocket clients.
+     * @private
+     */
+    private sendWss;
     /**
      * Launch the configuration panel in a system browser window.
      */
-    startInterface(config?: Partial<ConfigData>): this;
+    startInterface(config?: Partial<ConfigData>): Promise<this>;
     /**
      * Launch the configuration panel in a system browser window, blocking the current thread until the panel is closed.
      *

@@ -6,5 +6,6 @@ export interface ConfigData {
     };
     style?: string;
     body: string;
+    port: number;
 }
 export declare function startPanel(optConfig?: ConfigData): Record<string, Record<string, any>> | undefined;

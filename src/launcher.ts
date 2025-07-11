@@ -1,13 +1,14 @@
 import { ConfigPanel, InputType } from "./main.ts";
 
 
+// TODO: Swap to websocket communication instead of IPC, as the callbacks block on some platforms (Bun).
 const testPanel = new ConfigPanel({
     test_cat: { displayName: 'Test Category', description: 'This is a test category' },
     cat_2: { displayName: 'Category Two' },
 }, {
     test_cat: {
         text_string: {
-            type: InputType.string().max(1000).default('test-default'),
+            type: InputType.string().max(20).default('test-default'),
             displayName: 'Text String',
             description: 'A simple text string input',
         },
@@ -38,6 +39,11 @@ void testPanel
     .startInterface({
         windowOptions: {
             title: 'Test Config Panel',
+            width: 350,
+            height: 320,
+        },
+        webviewOptions: {
+            openDevtools: true,
         }
     });
 

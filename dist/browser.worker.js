@@ -23,7 +23,7 @@ export function startPanel(optConfig) {
 function bootBrowser(config) {
     var _a;
     const app = new Application();
-    const window = app.createBrowserWindow(Object.assign({ transparent: false, decorations: true, title: 'Configuration Panel', width: 300, height: 400 }, config.windowOptions));
+    const window = app.createBrowserWindow(Object.assign({ transparent: false, decorations: true, title: 'Configuration Panel', width: 350, height: 400 }, config.windowOptions));
     const webview = window.createWebview(Object.assign({ html: `<!DOCTYPE html>
         <html lang="en-us">
             <head>
@@ -37,13 +37,13 @@ function bootBrowser(config) {
                     padding: 0;
                 }
                 
-                main, .container {
+                body .category {
                     max-width: 800px;
-                    margin: 2rem auto;
+                    margin: 1rem auto;
                     background: #fff;
                     border-radius: 8px;
                     box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-                    padding: 2rem;
+                    padding: 1rem;
                 }
                 label {
                     font-weight: bold;
@@ -51,28 +51,59 @@ function bootBrowser(config) {
                     margin-right: 0.5rem;
                     display: inline-block;
                 }
+                .error_msg {
+                    color: red;
+                }
+                .description {
+                    font-size: 0.9rem;
+                    color: #555;
+                    margin-bottom: 0.5rem;
+                    margin-top: 0;
+                }
+                h2 {
+                    font-size: 1.5rem;
+                    margin: 0;
+                    padding: 0;
+                }
                 ${config.style || ''}
                 </style>
             </head>
             <body>
                 ${config.body}
                 <script>
-                    const sendValue = (path, value) => window.ipc.postMessage(JSON.stringify({ path, value }));
                     const inputs = document.querySelectorAll('input, textarea, select');
                     const values = {};
                     
+                    const socket = new WebSocket("ws://localhost:${config.port}");
+                    
+                    socket.addEventListener("open", (event) => { console.log('WebSocket connected'); });
+                    socket.addEventListener("close", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
+                    socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
+                    socket.addEventListener("message", (event) => {
+                        const data = JSON.parse(event.data);
+                        console.log("Message from server ", data);
+                        if (data.error) {
+                            document.getElementById('error-'+data.id).textContent = data.error;
+                        }
+                        if (data.ok) {
+                            document.getElementById('error-'+data.ok).textContent = '';
+                        }
+                    });
+                    
+                    const sendValue = (path, value, id) => socket.send(JSON.stringify({ path, value, id }));
+                    
                     inputs.forEach(input => {
-                        const name = input.name || input.id;
+                        const name = input.id;
                         const path = JSON.parse(atob(name));
                         if (!name || !path) return;
                         
                         switch (input.type) { 
                             case 'checkbox':
                             case 'radio':
-                                input.addEventListener('change', () => sendValue(path, input.checked));
+                                input.addEventListener('change', () => sendValue(path, input.checked, name));
                                 break;
                             default:
-                                input.addEventListener('input', () => sendValue(path, input.value));
+                                input.addEventListener('input', () => sendValue(path, input.value, name));
                         }
                     });
                 </script>
