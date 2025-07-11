@@ -35,7 +35,7 @@ testPanel.on('error', console.error);
 testPanel.on('exit', console.error);
 
 await testPanel
-    .fromJson('.env.json', true)
+    .fromJSON('.env.json', true)
     .fromEnvironment('test_')
     .startInterface({
         windowOptions: {
@@ -45,7 +45,7 @@ await testPanel
         },
         webviewOptions: {
             openDevtools: true,
-        }
+        },
     });
 
 setTimeout(() => testPanel.closePanel(), 10_000);

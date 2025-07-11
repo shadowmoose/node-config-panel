@@ -1,7 +1,7 @@
 import { fork } from "node:child_process";
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { type ConfigData, startPanel } from "./browser.worker.ts";
+import { type ConfigData } from "./browser.worker.ts";
 import { z } from "zod";
 import EventEmitter from "events";
 import * as fs from "node:fs";
@@ -133,7 +133,7 @@ export class ConfigPanel <
         return this;
     }
 
-    fromJson(filePath: string, ignoreMissing = false) {
+    fromJSON(filePath: string, ignoreMissing = false) {
         if (!fs.existsSync(filePath)) {
             if (ignoreMissing) return this;
             throw Error(`JSON Config file not found: ${filePath}`);
@@ -149,10 +149,7 @@ export class ConfigPanel <
         return this;
     }
 
-    fromYaml(filePath: string, ignoreMissing = false) {
-        // TODO: Implement loading from YAML file.
-        return this;
-    }
+    //TODO: fromYaml(filePath: string, ignoreMissing = false)
 
     private async startWss() {
         if (this.wss) return;
@@ -235,7 +232,7 @@ export class ConfigPanel <
      *
      * This call currently doesn't work, as the library has an internal error, but may work in the future.
      */
-    startInterfaceSync(config?: Partial<ConfigData>) {
+    /* TODO: startInterfaceSync(config?: Partial<ConfigData>) {
         const result = startPanel({
             ...config,
             body: this.buildHtml(),
@@ -243,7 +240,7 @@ export class ConfigPanel <
         });
         this.valueMap = this.zodSchema.parse(result) as any;
         return this;
-    }
+    } */
 
     /**
      * Returns true if the configuration panel is currently open and running.
@@ -302,7 +299,7 @@ export class ConfigPanel <
 
     private buildHtml() {
         const cats = Object.entries(this.categories).map(([catName, def]) => {
-            return `<div class="category ${catName}" id="cat_${catName}">
+            return `<div class="category wrapper_${catName}" id="cat_${catName}">
                 <h2 class="category_title ${catName}">${def.displayName}</h2>
                 ${ def.description ? `<p class="description ${catName}">${def.description}</p>` : '' }
                 <div class="configs">
