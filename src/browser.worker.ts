@@ -36,6 +36,8 @@ function bootBrowser(config: ConfigData) {
         transparent: false,
         decorations: true,
         title: 'Configuration Panel',
+        width: 300,
+        height: 400,
         ...config.windowOptions,
     });
 

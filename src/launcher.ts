@@ -2,7 +2,8 @@ import { ConfigPanel, InputType } from "./main.ts";
 
 
 const test = new ConfigPanel({
-    test_cat: { displayName: 'Test Category', description: 'This is a test category' }
+    test_cat: { displayName: 'Test Category', description: 'This is a test category' },
+    cat_2: { displayName: 'Category Two' },
 }, {
     test_cat: {
         text_string: {
@@ -19,6 +20,12 @@ const test = new ConfigPanel({
             displayName: 'Test Boolean',
             description: 'Check me out.'
         },
+    },
+    cat_2: {
+        test_enum: {
+            type: InputType.enum(["Salmon", "Tuna", "Trout"]).default('Tuna'),
+            displayName: 'Test Enum',
+        }
     }
 });
 

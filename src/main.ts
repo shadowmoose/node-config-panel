@@ -22,11 +22,14 @@ function launch(opts: ConfigData, controller: AbortController) {
 }
 
 /** Valid input types. */
-export const InputType = z.coerce;
+export const InputType = {
+    ...z.coerce,
+    enum: z.enum,
+};
 
 export interface CategoryConfig {
     displayName?: string;
-    description: string;
+    description?: string;
 }
 
 export interface ConfigDefinition {
@@ -35,7 +38,7 @@ export interface ConfigDefinition {
     displayName?: string;
     envName?: string;
     /** If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type. */
-    toHtml?: () => string;
+    toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
     skipLabel?: boolean;
     /** If true, will not trigger validation on every change, only when `validate()` is called. Useful for text inputs where user may be mid-edit. */
     skipRealtimeValidate?: boolean;
@@ -281,8 +284,8 @@ export class ConfigPanel <
 }
 
 function formatElementHtml(path: string[], confDef: ConfigDefinition, currentValue: any): string {
-    let html = makeElementHtml(confDef);
-    let quoteVal = JSON.stringify(currentValue);
+    let html = makeElementHtml(confDef, currentValue);
+    let quoteVal = JSON.stringify(currentValue || '');
     if (quoteVal[0] !== '"') quoteVal = `"${quoteVal}"`; // Ensure it's a string in quotes for HTML attributes
 
     const eleName = Buffer.from(JSON.stringify(path)).toString('base64');
@@ -314,8 +317,19 @@ function unwrapZod(zo: z.ZodType) {
     return typeName;
 }
 
-function makeElementHtml(conf: ConfigDefinition): string {
-    if (conf.toHtml) return conf.toHtml();
+function findZodOptions(zo: z.ZodType): string[] {
+    let unwrapped: any = zo;
+    try {
+        while (!unwrapped?.def?.entries) {
+            unwrapped = unwrapped.unwrap();
+        }
+        return Object.keys(unwrapped?.def?.entries);
+    } catch (_ignored) {}
+    throw Error('Not an enum type!');
+}
+
+function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
+    if (conf.toHtml) return conf.toHtml(conf, currentValue);
 
     const type = unwrapZod(conf.type);
 
@@ -326,7 +340,14 @@ function makeElementHtml(conf: ConfigDefinition): string {
             return `<input type="number" data-id value=VAL min="0" max="100"/>`;
         case 'boolean':
             return `<input type="checkbox" data-id data-checked />`;
+        case 'enum':
+            const opts = findZodOptions(conf.type);
+            const options = opts.map((v: string) => {
+                const qv = JSON.stringify(v);
+                return `<option value=${qv} ${v === currentValue ? 'selected' : ''}>${v}</option>`;
+            }).join('\n');
+            return `<select data-id>${options}</select>`;
         default:
-            return `<div>Not implemented type: ${conf.type.type}</div>`;
+            return `<div>Not implemented type: ${type}</div>`;
     }
 }
