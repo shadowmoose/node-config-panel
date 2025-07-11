@@ -32,7 +32,7 @@ export const InputType = Object.assign(Object.assign({}, z.coerce), { enum: z.en
  * Also emits:
  * - `error` - Emitted if an asynchronous error occurs.
  * - `invalid_change` - Emitted if a change fails validation, with `{ path: string[], value: any, error: Error }`.
- * - `exit` - Emitted when the panel is closed, with the exit code (or null).
+ * - `exit` - Emitted when the panel is closed, with the exit reason.
  *
  */
 export class ConfigPanel extends EventEmitter {
@@ -40,7 +40,6 @@ export class ConfigPanel extends EventEmitter {
         super();
         this.abortCtrl = new AbortController();
         this.valueMap = {};
-        this.running = false;
         this.wss = null;
         this.wssPort = 0;
         this.wssPing = null;
@@ -64,6 +63,14 @@ export class ConfigPanel extends EventEmitter {
             validatorSchema[catKey] = z.object(validatorCat);
         }
         this.zodSchema = z.object(validatorSchema);
+        // Register listener for abort cleanup.
+        this.abortCtrl.signal.addEventListener('abort', (reason) => {
+            var _a, _b;
+            (_a = this.wss) === null || _a === void 0 ? void 0 : _a.close();
+            clearInterval(this.wssPing);
+            (_b = this.child) === null || _b === void 0 ? void 0 : _b.kill();
+            this.emit('exit', reason);
+        });
     }
     /**
      * Load configuration values from environment variables.
@@ -109,7 +116,6 @@ export class ConfigPanel extends EventEmitter {
         this.wss = new WebSocketServer({ port: 0 });
         this.wss.on('connection', (ws) => {
             ws.isAlive = true;
-            console.log('WebSocket client connected');
             ws.on('error', console.error);
             ws.on('pong', () => ws.isAlive = true);
             ws.on('error', err => {
@@ -170,7 +176,6 @@ export class ConfigPanel extends EventEmitter {
      */
     async startInterface(config) {
         await this.startWss();
-        this.running = true;
         this.child = launch(Object.assign(Object.assign({}, config), { body: this.buildHtml(), port: this.wssPort }), this.abortCtrl);
         this.child.on('error', (err) => {
             if (!this.abortCtrl.signal.aborted) {
@@ -178,11 +183,7 @@ export class ConfigPanel extends EventEmitter {
             }
         });
         this.child.once('exit', (code) => {
-            var _a;
-            this.running = false;
-            (_a = this.wss) === null || _a === void 0 ? void 0 : _a.close();
-            clearInterval(this.wssPing);
-            this.emit('exit', code);
+            this.closePanel('exit' + (code ? ` code ${code}` : ''));
         });
         return this;
     }
@@ -200,7 +201,7 @@ export class ConfigPanel extends EventEmitter {
      * Returns true if the configuration panel is currently open and running.
      */
     get isRunning() {
-        return this.running && this.child && !this.child.killed;
+        return !this.abortCtrl.signal.aborted && this.child && !this.child.killed;
     }
     /**
      * The child process running the configuration panel, exposed for advanced use cases.
@@ -218,24 +219,24 @@ export class ConfigPanel extends EventEmitter {
         return this.valueMap;
     }
     /**
-     * Close the configuration panel.
+     * Close the configuration panel, and shut down any associated resources.
      * If waiting for the panel to close is desired, follow this call with `await waitForClose()`.
      *
      * @param reason
      */
-    closePanel(reason) {
+    closePanel(reason = 'closed manually') {
         this.abortCtrl.abort(reason);
         return this;
     }
     /**
      * Wait for the configuration panel to close, then validate and return all Config values.
      *
-     * This does not trigger the panel to close, call `close()` first if needed -
+     * This does not trigger the panel to close, call `closePanel()` first if needed -
      * otherwise this will wait for the user to close the panel.
      */
     async waitForClose() {
-        while (this.isRunning) {
-            await new Promise(r => setTimeout(r, 100));
+        if (this.isRunning) {
+            await new Promise(resolve => this.once('exit', () => resolve()));
         }
         return this.validate();
     }

@@ -38,7 +38,7 @@ type TypeOfConfigDef<T extends ConfigDefinition> = z.infer<T['type']>;
  * Also emits:
  * - `error` - Emitted if an asynchronous error occurs.
  * - `invalid_change` - Emitted if a change fails validation, with `{ path: string[], value: any, error: Error }`.
- * - `exit` - Emitted when the panel is closed, with the exit code (or null).
+ * - `exit` - Emitted when the panel is closed, with the exit reason.
  *
  */
 export declare class ConfigPanel<CATS extends Record<string, CategoryConfig>, DEFS extends Record<keyof CATS, Record<string, ConfigDefinition>>, VALS extends {
@@ -51,7 +51,6 @@ export declare class ConfigPanel<CATS extends Record<string, CategoryConfig>, DE
     private categories;
     private readonly configMap;
     private valueMap;
-    private running;
     private zodSchema;
     private wss;
     private wssPort;
@@ -99,7 +98,7 @@ export declare class ConfigPanel<CATS extends Record<string, CategoryConfig>, DE
      */
     get values(): VALS;
     /**
-     * Close the configuration panel.
+     * Close the configuration panel, and shut down any associated resources.
      * If waiting for the panel to close is desired, follow this call with `await waitForClose()`.
      *
      * @param reason
@@ -108,7 +107,7 @@ export declare class ConfigPanel<CATS extends Record<string, CategoryConfig>, DE
     /**
      * Wait for the configuration panel to close, then validate and return all Config values.
      *
-     * This does not trigger the panel to close, call `close()` first if needed -
+     * This does not trigger the panel to close, call `closePanel()` first if needed -
      * otherwise this will wait for the user to close the panel.
      */
     waitForClose(): Promise<VALS>;

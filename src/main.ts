@@ -61,7 +61,7 @@ type TypeOfConfigDef<T extends ConfigDefinition> = z.infer<T['type']>;
  * Also emits:
  * - `error` - Emitted if an asynchronous error occurs.
  * - `invalid_change` - Emitted if a change fails validation, with `{ path: string[], value: any, error: Error }`.
- * - `exit` - Emitted when the panel is closed, with the exit code (or null).
+ * - `exit` - Emitted when the panel is closed, with the exit reason.
  *
  */
 export class ConfigPanel <
@@ -74,7 +74,6 @@ export class ConfigPanel <
     private categories: CATS;
     private readonly configMap: DEFS;
     private valueMap: VALS = {} as any;
-    private running = false;
     private zodSchema: z.ZodObject;
     private wss: Server|null = null;
     private wssPort: number = 0;
@@ -101,6 +100,13 @@ export class ConfigPanel <
             validatorSchema[catKey] = z.object(validatorCat);
         }
         this.zodSchema = z.object(validatorSchema);
+        // Register listener for abort cleanup.
+        this.abortCtrl.signal.addEventListener('abort', (reason) => {
+            this.wss?.close();
+            clearInterval(this.wssPing);
+            this.child?.kill();
+            this.emit('exit', reason);
+        })
     }
 
     /**
@@ -153,7 +159,6 @@ export class ConfigPanel <
         this.wss = new WebSocketServer({ port: 0 });
         this.wss.on('connection',  (ws: WebSocket & { isAlive: boolean }) => {
             ws.isAlive = true;
-            console.log('WebSocket client connected');
             ws.on('error', console.error);
             ws.on('pong', () => ws.isAlive = true);
             ws.on('error', err => {
@@ -209,7 +214,6 @@ export class ConfigPanel <
      */
     async startInterface(config?: Partial<ConfigData>) {
         await this.startWss();
-        this.running = true;
         this.child = launch({
             ...config,
             body: this.buildHtml(),
@@ -221,10 +225,7 @@ export class ConfigPanel <
             }
         });
         this.child.once('exit', (code) => {
-            this.running = false;
-            this.wss?.close();
-            clearInterval(this.wssPing);
-            this.emit('exit', code);
+            this.closePanel('exit' + (code ? ` code ${code}` : ''));
         });
         return this;
     }
@@ -248,7 +249,7 @@ export class ConfigPanel <
      * Returns true if the configuration panel is currently open and running.
      */
     get isRunning() {
-        return this.running && this.child && !this.child.killed;
+        return !this.abortCtrl.signal.aborted && this.child && !this.child.killed;
     }
 
     /**
@@ -269,12 +270,12 @@ export class ConfigPanel <
     }
 
     /**
-     * Close the configuration panel.
+     * Close the configuration panel, and shut down any associated resources.
      * If waiting for the panel to close is desired, follow this call with `await waitForClose()`.
      *
      * @param reason
      */
-    closePanel(reason?: string) {
+    closePanel(reason: string = 'closed manually') {
         this.abortCtrl.abort(reason);
         return this;
     }
@@ -282,12 +283,12 @@ export class ConfigPanel <
     /**
      * Wait for the configuration panel to close, then validate and return all Config values.
      *
-     * This does not trigger the panel to close, call `close()` first if needed -
+     * This does not trigger the panel to close, call `closePanel()` first if needed -
      * otherwise this will wait for the user to close the panel.
      */
     async waitForClose() {
-        while (this.isRunning) {
-            await new Promise(r => setTimeout(r, 100));
+        if (this.isRunning) {
+            await new Promise<void>(resolve => this.once('exit', () => resolve()));
         }
         return this.validate();
     }

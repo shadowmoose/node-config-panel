@@ -32,8 +32,9 @@ const testPanel = new ConfigPanel({
 
 testPanel.on('values', console.dir);
 testPanel.on('error', console.error);
+testPanel.on('exit', console.error);
 
-void testPanel
+await testPanel
     .fromJson('.env.json', true)
     .fromEnvironment('test_')
     .startInterface({
@@ -47,6 +48,7 @@ void testPanel
         }
     });
 
+setTimeout(() => testPanel.closePanel(), 10_000);
 const results = await testPanel.waitForClose();
 
 console.log('Validated input config:', results);

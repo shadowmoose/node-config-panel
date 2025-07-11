@@ -76,12 +76,10 @@ function bootBrowser(config) {
                     
                     const socket = new WebSocket("ws://localhost:${config.port}");
                     
-                    socket.addEventListener("open", (event) => { console.log('WebSocket connected'); });
                     socket.addEventListener("close", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
                     socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
                     socket.addEventListener("message", (event) => {
                         const data = JSON.parse(event.data);
-                        console.log("Message from server ", data);
                         if (data.error) {
                             document.getElementById('error-'+data.id).textContent = data.error;
                         }
@@ -136,7 +134,6 @@ function bootBrowser(config) {
     });
     if (!isWorker) {
         app.onEvent(evt => {
-            console.log('APP EVENT:', evt);
             if (evt.event === 0) {
                 window.setVisible(false);
             }
@@ -151,6 +148,6 @@ function bootBrowser(config) {
     }
     return localState;
 }
-if (process.send) {
+if (isWorker) {
     startPanel();
 }
