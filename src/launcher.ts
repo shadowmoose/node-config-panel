@@ -1,7 +1,7 @@
 import { ConfigPanel, InputType } from "./main.ts";
 
 
-const test = new ConfigPanel({
+const testPanel = new ConfigPanel({
     test_cat: { displayName: 'Test Category', description: 'This is a test category' },
     cat_2: { displayName: 'Category Two' },
 }, {
@@ -29,10 +29,10 @@ const test = new ConfigPanel({
     }
 });
 
-test.on('values', console.dir);
-test.on('error', console.error);
+testPanel.on('values', console.dir);
+testPanel.on('error', console.error);
 
-void test
+void testPanel
     .fromJson('.env.json', true)
     .fromEnvironment('test_')
     .startInterface({
@@ -41,6 +41,7 @@ void test
         }
     });
 
-const results = await test.waitForClose();
+const results = await testPanel.waitForClose();
 
 console.log('Validated input config:', results);
+console.log('IDE help test:', testPanel.values.cat_2.test_enum);
