@@ -1,4 +1,6 @@
 [![NPM Version](https://img.shields.io/npm/v/%40shadowmoose%2Fconfig)](https://npmjs.com/package/@shadowmoose/config)
+[![Static Badge](https://img.shields.io/badge/docs-8A2BE2)](https://shadowmoose.github.io/node-config-panel/latest)
+
 
 # Config Panel
 This is the initial push of my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
@@ -18,6 +20,7 @@ The panel can load/save from JSON files and environment variables, and can be ex
 
 ## Installation
 `npm i @shadowmoose/config`
+Check out the [Documentation](https://shadowmoose.github.io/node-config-panel/latest) for more details.
 
 ## Example Usage
 ```typescript

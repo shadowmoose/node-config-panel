@@ -12,10 +12,17 @@
   "scripts": {
     "start": "node --experimental-transform-types src/test-launcher.ts",
     "build": "tsc",
+    "typedoc": "typedoc --out docs-types --excludePrivate --excludeProtected --entryPointStrategy Expand src --plugin typedoc-plugin-extras --footerDate",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "files": ["dist"],
-  "keywords": ["utility", "configuration", "settings"],
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "utility",
+    "configuration",
+    "settings"
+  ],
   "author": "@ShadowMoose",
   "license": "MIT",
   "dependencies": {
@@ -26,6 +33,8 @@
   "devDependencies": {
     "@types/node": "^24.0.13",
     "@types/ws": "^8.18.1",
+    "typedoc": "^0.28.7",
+    "typedoc-plugin-extras": "^4.0.0",
     "typescript": "^5.8.3"
   }
 }

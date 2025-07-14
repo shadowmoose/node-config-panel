@@ -1,6 +1,7 @@
 node_modules
 .idea
 dist
+docs-types
 .env
 .env.json
 *.iml
