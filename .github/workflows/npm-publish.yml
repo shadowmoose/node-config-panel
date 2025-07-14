@@ -11,7 +11,7 @@ on:
         required: true
         type: string
 
-run-name: Deploy version ${{ inputs.version }} to Github, by @${{ github.actor }}
+run-name: Deploy version ${{ inputs.version }} to NPM & Github, by @${{ github.actor }}
 
 jobs:
   build:
