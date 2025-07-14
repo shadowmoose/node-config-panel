@@ -6,7 +6,7 @@ on:
   push:
 
 
-run-name: TypeDoc build version 0.0.1, by @${{ github.actor }}
+run-name: TypeDoc build version 0.0.2, by @${{ github.actor }}
 
 jobs:
   build:
@@ -34,7 +34,7 @@ jobs:
       - name: Set Package Version in package.json
         uses: ramonpaolo/bump-version@v2.3.1
         with:
-          tag: 0.0.1
+          tag: 0.0.2
           commit: false
 
       - name: Install Dependencies
@@ -46,12 +46,22 @@ jobs:
       - name: Build TypeDocs
         run: pnpm run docs-types
 
-      - name: Deploy TypeDoc
+      - name: Deploy TypeDoc Versioned
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages # The branch the action should deploy to.
           folder: docs-types # The folder the action should deploy.
-          target-folder: 0.0.1
-          commit-message: 'Deploy TypeDocs for version 0.0.1'
+          target-folder: 0.0.2
+          commit-message: Deploy TypeDocs for version 0.0.2
+          git-config-name: doc-bot
+          git-config-email: <>
+
+      - name: Deploy TypeDoc Latest
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages # The branch the action should deploy to.
+          folder: docs-types # The folder the action should deploy.
+          target-folder: latest
+          commit-message: Deploy TypeDocs for version latest (0.0.2)
           git-config-name: doc-bot
           git-config-email: <>
