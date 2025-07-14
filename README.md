@@ -1,3 +1,5 @@
+[![NPM Version](https://img.shields.io/npm/v/%40shadowmoose%2Fconfig)](https://npmjs.com/package/@shadowmoose/config)
+
 # Config Panel
 This is the initial push of my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
 
@@ -6,13 +8,16 @@ in order to expose real-time configuration options to users in a friendly way.
 
 Because it is web-based, the config panel also supports remote access via web browser.
 
-All configuration values are strongly types, and validated before being accepted.
+All configuration values are strongly typed, and validated before being accepted.
 The panel can load/save from JSON files and environment variables, and can be extended to support other formats.
 
 [![screenshot](docs/screenshot.png)](docs/screenshot.png)
 
 > **Note:**  
 > This is an early release, and the API may change in future versions.
+
+## Installation
+`npm i @shadowmoose/config`
 
 ## Example Usage
 ```typescript
