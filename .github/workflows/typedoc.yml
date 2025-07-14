@@ -1,0 +1,59 @@
+# This workflow creates the given tag, then publishes it to NPM and generates a Release on Github.
+
+name: Build TypeDoc
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to create'
+        required: true
+        type: string
+
+run-name: TypeDoc build version ${{ inputs.version }}, by @${{ github.actor }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+          cache: 'pnpm'
+          registry-url: https://registry.npmjs.org
+
+      - name: Set Package Version in package.json
+        uses: ramonpaolo/bump-version@v2.3.1
+        with:
+          tag: ${{ inputs.version }}
+          commit: false
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Build TypeDocs
+        run: pnpm run docs-types
+
+      - name: Deploy TypeDoc
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages # The branch the action should deploy to.
+          folder: docs-types # The folder the action should deploy.
+          target-folder: ${{ inputs.version }}
+          commit-message: 'Deploy TypeDocs for version ${{ inputs.version }}'
