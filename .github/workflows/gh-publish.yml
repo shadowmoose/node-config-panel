@@ -16,6 +16,8 @@ run-name: Deploy version ${{ inputs.version }} to Github, by @${{ github.actor }
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
