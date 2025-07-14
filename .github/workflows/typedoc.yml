@@ -3,12 +3,8 @@
 name: Build TypeDoc
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to create'
-        required: true
-        type: string
+  push:
+
 
 run-name: TypeDoc build version ${{ inputs.version }}, by @${{ github.actor }}
 
