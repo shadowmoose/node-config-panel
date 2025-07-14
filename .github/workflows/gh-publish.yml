@@ -11,6 +11,8 @@ on:
         required: true
         type: string
 
+run-name: Deploy version ${{ inputs.version }} to Github, by @${{ github.actor }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
