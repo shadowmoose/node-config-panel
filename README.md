@@ -20,6 +20,7 @@ The panel can load/save from JSON files and environment variables, and can be ex
 
 ## Installation
 `npm i @shadowmoose/config`
+Check out the [Documentation](https://shadowmoose.github.io/node-config-panel/latest) for more details.
 
 ## Example Usage
 ```typescript
