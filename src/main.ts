@@ -86,7 +86,7 @@ type StringKeys<T> = Extract<keyof T, string>;
 /**
  * Representation of a change event key. Generate these using `ConfigPanel.getChangeKey`.
  */
-type ChangeEventKey = string & { _fake: never }
+type ChangeEventKey<T> = string & { _fake: never }
 
 /**
  * A configuration panel that can be launched in a browser window.
@@ -101,10 +101,10 @@ export interface ConfigPanel<
     /** Emitted when any config value changes, within the given category. */
     on<Cat extends StringKeys<CATS>>(
         event: `change.${Cat}`,
-        callback: { (data: { path: string[], value: any }): void }
+        callback: { (data: { path: string[], value: z.infer<DEFS[Cat][string]['type']> }): void }
     ): this;
     /** Emitted when a specific config value changes. */
-    on<Cat extends StringKeys<CATS>>(event: ChangeEventKey, callback: { (data: { path: string[], value: any }): void }): this;
+    on<Cat extends StringKeys<CATS>, T>(event: ChangeEventKey<T>, callback: { (data: { path: string[], value: T }): void }): this;
     /** Emitted when any config value changes, with a map of all current values. */
     on(event: 'values', callback: { (data: VALS): void }): this;
     /** Emitted when an asynchronous error occurs. */
@@ -350,12 +350,18 @@ export class ConfigPanel <
      *
      * Example usage:
      * ```typescript
-     * testPanel.on(testPanel.getChangeKey('test_cat', 'test_number'), data => console.log(data));
+     * panel.on(panel.getChangeKey('test_cat', 'test_number'), data => console.log(data));
      * ```
      */
-    getChangeKey<C extends string & keyof DEFS, P extends string & keyof DEFS[C]>(cat: C, def?: P): ChangeEventKey {
+    getChangeKey<
+        C extends string & keyof DEFS,
+        P extends string & keyof DEFS[C],
+        V = P extends undefined ? z.infer<DEFS[C][string]['type']> : TypeOfConfigDef<DEFS[C][P]>
+    >(cat: C, def?: P): ChangeEventKey<V> {
         return (`change.${cat}` + def ? `.${def}` : '') as any;
     }
+
+    key = this.getChangeKey;
 
     /**
      * Launch the configuration panel in a system browser window.

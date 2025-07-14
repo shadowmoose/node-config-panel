@@ -2,7 +2,7 @@ import { ConfigPanel, InputType } from "./main.ts";
 import { z } from "zod";
 
 
-const testPanel = new ConfigPanel({
+const conf = new ConfigPanel({
     test_cat: { displayName: 'Test Category', description: 'This is a test category' },
     cat_2: { displayName: 'Category Two' },
 }, {
@@ -32,21 +32,22 @@ const testPanel = new ConfigPanel({
             envName: 'FISH_TYPE',
         },
         complex_string_array: {
-            type: z.string().transform(value => value.split(',')).pipe(z.string().array()),
+            type: z.string().transform(value => value.split(',')).pipe(z.string().trim().min(1).array()),
             default: 'one,two,three',
             useZodTypeName: 'string',
         }
     }
 });
 
-testPanel.on('values', console.dir);
-testPanel.on('error', console.error);
-testPanel.on('exit', console.error);
+conf.on('values', console.dir);
+conf.on('error', console.error);
+conf.on('exit', console.error);
 
-testPanel.on('change.test_cat', data => console.log(data));
-testPanel.on(testPanel.getChangeKey('test_cat', 'test_number'), data => console.log(data));
+conf.on('change.test_cat', data => console.log(data));
+conf.on(conf.key('test_cat', 'test_number'), data => console.log(data));
+conf.on(conf.key('cat_2'), data => console.log(data));
 
-await testPanel
+await conf
     .fromJSON('.env.json', true)
     .fromEnvironment('test_')
     .startInterface({
@@ -65,7 +66,7 @@ await testPanel
         htmlFooter: '<p style="font-size: small;text-align: center">Generated Panel Demo</p>',
     });
 
-const results = await testPanel.waitForClose();
+const results = await conf.waitForClose();
 
 console.log('Validated input config:', results);
-console.log('IDE help test:', testPanel.values.cat_2.complex_string_array);
+console.log('IDE help test:', conf.values.cat_2.complex_string_array);

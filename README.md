@@ -24,13 +24,13 @@ The panel can load/save from JSON files and environment variables, and can be ex
 import { ConfigPanel, InputType } from "@shadowmoose/config";
 
 // Define a new configuration panel with strong types.
-const testPanel = new ConfigPanel({
+const config = new ConfigPanel({
     // Define categories.
-    test_category: { displayName: 'Test Category', description: 'This is a test category' },
+    first_category: { displayName: 'Test Category', description: 'This is a test category' },
     cat_2: { displayName: 'Category Two' },
 }, {
     // Define all config inputs, within each category.
-    test_category: {
+    first_category: {
         text_string: {
             type: InputType.string().max(20).default('test-default'),
             displayName: 'Text String',
@@ -56,7 +56,7 @@ const testPanel = new ConfigPanel({
             envName: 'FISH_TYPE', // Custom environment variable name.
         },
         complex_string_array: {
-            type: z.string().transform(value => value.split(',')).pipe(z.string().array()),
+            type: z.string().transform(value => value.split(',')).pipe(z.string().trim().min(1).array()),
             default: 'one,two,three', // Example transform from CSV into Array.
             useZodTypeName: 'string', // Render as a string input to the user.
         }
@@ -65,7 +65,7 @@ const testPanel = new ConfigPanel({
 
 // Example: Load existing config from a JSON file and environment variables, then start the interface.
 // All values are optional.
-await testPanel
+await config
     .fromJSON('.env.json', true) // Load existing config from a JSON file, if it exists.
     .fromEnvironment('test_') // Load existing config from environment variables, with optional prefix.
     .startInterface({
@@ -78,17 +78,17 @@ await testPanel
         port: 0, // Use random available port.
         host: '0.0.0.0', // Bind to all interfaces to allow remote access.
         // Optional custom CSS/HTML to apply to the panel. Everything has simple class names to make this easy.
-        style: '.category_title { color: blue; } .wrapper_test_category { background: #f0f0f0 !important; }',
+        style: '.category_title { color: blue; } .wrapper_first_category { background: #f0f0f0 !important; }',
         htmlHeader: '<h1 style="text-align: center">Configuration Panel</h1>',
         htmlFooter: '<p style="font-size: small;text-align: center">Generated Panel Demo</p>',
     });
 
 // Example: save updated config to a JSON file.
-testPanel.toJSON('.env.json');
+config.toJSON('.env.json');
 // Example: accessing current valid config values live, without waiting.
-console.log(testPanel.values);
+console.log(config.values);
 /* Output: {
-    test_category: {
+    first_category: {
         text_string: string
         test_number: number
         test_boolean: boolean
@@ -100,18 +100,18 @@ console.log(testPanel.values);
 } */
 
 // Wait for the panel to be closed, and save the results to a variable.
-const results = await testPanel.waitForClose();
+const results = await config.waitForClose();
 console.log('Configured enum value:', results.cat_2.test_enum);
 // Output: 'Configured enum value: Tuna'
 ```
 
 ## Event-Driven Updates
 All data updates are emitted as events, enabling real-time feedback and dynamic behavior if desired.
-Using the above example `testPanel`, you can listen for events like so:
+Using the above example `config`, you can listen for events like so:
 ```typescript
-testPanel.on('values', console.dir); // Listen for any changes to values.
-testPanel.on('change.test_category', console.dir); // Listen for changes to values within a specific category.
-testPanel.on(testPanel.getChangeKey('test_cat', 'test_number'), console.log); // Listen for changes to a specific value.
-testPanel.on('error', console.error); // Listen for any errors that occur.
-testPanel.on('exit', console.error); // Listen for when the panel is closed.
+config.on('values', console.dir); // Listen for any changes to values.
+config.on('change.first_category', console.dir); // Listen for changes to values within a specific category. Strongly typed.
+config.on(config.key('test_cat', 'test_number'), console.log); // Listen for changes to a specific value. Strongly typed.
+config.on('error', console.error); // Listen for any errors that occur.
+config.on('exit', console.error); // Listen for when the panel is closed.
 ```
