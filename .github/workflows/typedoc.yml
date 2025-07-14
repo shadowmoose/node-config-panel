@@ -53,3 +53,5 @@ jobs:
           folder: docs-types # The folder the action should deploy.
           target-folder: 0.0.1
           commit-message: 'Deploy TypeDocs for version 0.0.1'
+          git-config-name: doc-bot
+          git-config-email: <>
