@@ -106,12 +106,12 @@ console.log('Configured enum value:', results.cat_2.test_enum);
 ```
 
 ## Event-Driven Updates
-All data updates are emitted as events, allowing for real-time feedback and dynamic behavior.
+All data updates are emitted as events, enabling real-time feedback and dynamic behavior if desired.
 Using the above example `testPanel`, you can listen for events like so:
 ```typescript
 testPanel.on('values', console.dir); // Listen for any changes to values.
-testPanel.on('change.test_category.test_boolean', console.dir); // Listen for changes to a specific value.
 testPanel.on('change.test_category', console.dir); // Listen for changes to values within a specific category.
+testPanel.on(testPanel.getChangeKey('test_cat', 'test_number'), console.log); // Listen for changes to a specific value.
 testPanel.on('error', console.error); // Listen for any errors that occur.
 testPanel.on('exit', console.error); // Listen for when the panel is closed.
 ```
