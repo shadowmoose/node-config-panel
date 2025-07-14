@@ -69,3 +69,27 @@ jobs:
           generate_release_notes: true
           make_latest: true
           files: dist.tar.gz
+
+      - name: Build TypeDocs
+        run: pnpm run docs-types
+
+      - name: Deploy TypeDoc Versioned
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          target-folder: ${{ inputs.version }}
+          branch: gh-pages # The branch the action should deploy to.
+          folder: docs-types # The folder the action should deploy.
+          commit-message: Deploy TypeDocs for version ${{ inputs.version }}
+          git-config-name: doc-bot
+          git-config-email: <>
+
+      - name: Deploy TypeDoc Latest
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          target-folder: latest
+          branch: gh-pages # The branch the action should deploy to.
+          folder: docs-types # The folder the action should deploy.
+          clean: true
+          commit-message: Deploy TypeDocs for version latest (${{ inputs.version }})
+          git-config-name: doc-bot
+          git-config-email: <>
