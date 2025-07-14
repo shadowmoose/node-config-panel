@@ -3,7 +3,7 @@
 
 
 # Config Panel
-This is the initial push of my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
+This is my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
 
 This library provides a visual configuration panel, working cross-platform via native webviews or browsers, 
 in order to expose real-time configuration options to users in a friendly way.
@@ -19,8 +19,9 @@ The panel can load/save from JSON files and environment variables, and can be ex
 > This is an early release, and the API may change in future versions.
 
 ## Installation
-`npm i @shadowmoose/config`
-Check out the [Documentation](https://shadowmoose.github.io/node-config-panel/latest) for more details.
+```npm i @shadowmoose/config```
+
+[Check out the Documentation](https://shadowmoose.github.io/node-config-panel/latest) for more details.
 
 ## Example Usage
 ```typescript
