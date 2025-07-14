@@ -30,24 +30,36 @@ export interface ConfigData {
     killOnClose?: boolean,
 }
 
+/**
+ * Starts the configuration panel. This process will block the main thread until the panel is closed.
+ *
+ * This function can be called in a worker or main process.
+ * If called in a worker, it will wait for the parent process to send the full configuration data.
+ * If called in the main process, it will directly boot the browser with the provided configuration.
+ * @param optConfig
+ */
 export function startPanel(optConfig?: ConfigData) {
-    if (!optConfig) {
-        let configString: string|null = null;
-        const start = Date.now();
-        let interval = setInterval(() => {
-            if (Date.now() - start > 10_000) {
-                clearInterval(interval);
-                throw Error('No configuration data received from parent process after 10 seconds.');
-            }
-            if (configString) {
-                clearInterval(interval);
-                bootBrowser(JSON.parse(configString));
-            }
-        }, 100);
-        process.once('message', (data: string) => configString = data );
-    } else {
-        return bootBrowser(optConfig);
-    }
+    return new Promise((resolve, reject) => {
+        if (!optConfig || isWorker) {
+            // Wait for IPC to pass in full configuration data.
+            let configString: string|null = null;
+            const start = Date.now();
+            let interval = setInterval(() => {
+                if (Date.now() - start > 10_000) {
+                    clearInterval(interval);
+                    return reject('No configuration data received from parent process after 10 seconds.');
+                }
+                if (configString) {
+                    clearInterval(interval);
+                    return resolve(bootBrowser(JSON.parse(configString)));
+                }
+            }, 100);
+            process.once('message', (data: string) => configString = data );
+        } else {
+            // Directly boot the browser with the provided configuration.
+            return resolve(bootBrowser(optConfig));
+        }
+    })
 }
 
 function bootBrowser(config: ConfigData) {
@@ -110,5 +122,5 @@ function bootBrowser(config: ConfigData) {
 }
 
 if (isWorker) {
-    startPanel();
+    startPanel().catch(console.error);
 }
