@@ -6,7 +6,7 @@ on:
   push:
 
 
-run-name: TypeDoc build version ${{ inputs.version }}, by @${{ github.actor }}
+run-name: TypeDoc build version 0.0.0, by @${{ github.actor }}
 
 jobs:
   build:
@@ -34,7 +34,7 @@ jobs:
       - name: Set Package Version in package.json
         uses: ramonpaolo/bump-version@v2.3.1
         with:
-          tag: ${{ inputs.version }}
+          tag: 0.0.0
           commit: false
 
       - name: Install Dependencies
@@ -51,5 +51,5 @@ jobs:
         with:
           branch: gh-pages # The branch the action should deploy to.
           folder: docs-types # The folder the action should deploy.
-          target-folder: ${{ inputs.version }}
-          commit-message: 'Deploy TypeDocs for version ${{ inputs.version }}'
+          target-folder: 0.0.0
+          commit-message: 'Deploy TypeDocs for version 0.0.0'
