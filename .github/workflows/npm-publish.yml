@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish'
+        description: 'Version to create'
         required: true
         type: string
 
