@@ -71,7 +71,7 @@ jobs:
           files: dist.tar.gz
 
       - name: Build TypeDocs
-        run: 'pnpm run typedoc --out docs-types --excludePrivate --excludeProtected --entryPointStrategy Expand src --plugin typedoc-plugin-extras --footerDate --customTitle "Docs for Release: ${{ inputs.version }}"'
+        run: 'pnpm run typedoc --customTitle "Docs for Release: ${{ inputs.version }}"'
 
       - name: 'Deploy TypeDoc: Versioned'
         uses: JamesIves/github-pages-deploy-action@v4

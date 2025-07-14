@@ -12,7 +12,7 @@
   "scripts": {
     "start": "node --experimental-transform-types src/test-launcher.ts",
     "build": "tsc",
-    "typedoc": "typedoc",
+    "typedoc": "typedoc --out docs-types --excludePrivate --excludeProtected --entryPointStrategy Expand src --plugin typedoc-plugin-extras --footerDate",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "files": [
