@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -56,12 +57,15 @@ jobs:
       - name: Create Release Bundle
         run: tar -czvf dist.tar.gz dist
 
-      - name: Make Github release
+      - name: Make Github Release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ inputs.version }}
           tag_name: ${{ inputs.version }}
-          body: https://www.npmjs.com/package/@shadowmoose/config/v/${{ inputs.version }}
+          body: |
+            ## Links
+            + **NPM:** https://www.npmjs.com/package/@shadowmoose/config/v/${{ inputs.version }}
+            + **Build Log:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           generate_release_notes: true
           make_latest: true
           files: dist.tar.gz
