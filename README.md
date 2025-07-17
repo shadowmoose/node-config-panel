@@ -70,9 +70,12 @@ const config = new ConfigPanel({
 // Example: Load existing config from a JSON file and environment variables, then start the interface.
 // All values are optional.
 await config
-    .fromJSON('.env.json', true) // Load existing config from a JSON file, if it exists.
-    .fromEnvironment('test_') // Load existing config from environment variables, with optional prefix.
-    .startInterface({
+    .fromJSON({
+        filePath: '.env.json', // Load existing config from a JSON file, if it exists.
+    }).fromEnvironment({
+        prefix: 'TEST_', // Load existing config from environment variables, with optional prefix.
+        envFile: '.env',
+    }).startInterface({
         windowOptions: {
             title: 'Test Config Panel',
             width: 350,

@@ -48,9 +48,14 @@ conf.on(conf.key('test_cat', 'test_number'), data => console.log(data));
 conf.on(conf.key('cat_2'), data => console.log(data));
 
 await conf
-    .fromJSON('.env.json', true)
-    .fromEnvironment('test_')
-    .startInterface({
+    .load()
+    .fromJSON({
+        filePath: '.env.json',
+        ignoreMissing: true,
+    }).fromEnvironment({
+        prefix: 'TEST_',
+        envFile: '.env',
+    }).startInterface({
         windowOptions: {
             title: 'Test Config Panel',
             width: 350,

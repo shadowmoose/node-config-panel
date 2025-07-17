@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import { type AddressInfo, type Server, WebSocket, WebSocketServer } from "ws";
 import { clearInterval } from "node:timers";
 import * as http from "node:http";
+import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "util";
 
 
 function launch(opts: ConfigData, controller: AbortController) {
@@ -62,6 +63,10 @@ export interface ConfigDefinition {
     displayName?: string;
     /** If defined, uses this environment variable name instead of the default PREFIX_CATEGORY_CONFIG. */
     envName?: string;
+    /** If defined, uses this command-line argument name instead of the default `--category-config`. */
+    argName?: string;
+    /** If defined, uses this single-character command-line argument name instead of none. */
+    argShort?: string;
     /** If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type. */
     toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
     /** If true, will not generate a label for this config element. Useful when implementing custom `toHtml`. */
@@ -134,6 +139,8 @@ export class ConfigPanel <
     private wssPort: number = 0;
     private wssPing: any = null;
     private server: http.Server|null = null;
+    /** The raw positional arguments passed to the program. */
+    public positionals: string[] = [];
 
     constructor(cats: CATS, defs: DEFS) {
         super();
@@ -150,7 +157,7 @@ export class ConfigPanel <
                 const confDef = configs[confKey];
                 if (!confDef.displayName) confDef.displayName = confKey;
                 validatorCat[confKey] = confDef.type;
-                this.setRawValue([catKey, confKey], confDef.default || (confDef.type.def as any).defaultValue);
+                this.setRawValue([catKey, confKey], confDef.default ?? (confDef.type.def as any).defaultValue);
             }
             validatorSchema[catKey] = z.object(validatorCat);
         }
@@ -167,12 +174,22 @@ export class ConfigPanel <
 
     /**
      * Load configuration values from environment variables.
-     * Default format is "PREFIX_CATEGORY_CONFIG", or the envName defined in each ConfigDefinition.
+     * Default format is "[PREFIX]CATEGORY_CONFIG", or the envName defined in each ConfigDefinition.
      *
-     * @param prefix
+     * @param envFile The .env file to load before parsing the current environment. Defaults to ".env".
+     * @param prefix The prefix to use for environment variables. Defaults to "".
+     * @param ignoreMissing If true, will not throw an error if the .env file does not exist. Defaults to true.
      */
-    fromEnvironment(prefix: string = '') {
-        // TODO: Maybe call a dotenv load first?
+    fromEnvironment({
+        envFile = '.env',
+        prefix='',
+        ignoreMissing = true
+    }: { envFile?: string, prefix?: string, ignoreMissing?: boolean } = {}) {
+        try {
+            (process as any).loadEnvFile(envFile);
+        } catch (err) {
+            if (!ignoreMissing) throw err;
+        }
         const lcEnv = Object.entries(process.env).reduce(
             (acc, [k,v]) => { acc[k.toLowerCase()] = `${v}`; return acc }
         ,{} as Record<string,string>);
@@ -188,8 +205,14 @@ export class ConfigPanel <
         }
         return this;
     }
+    fromEnv = this.fromEnvironment;
 
-    fromJSON(filePath: string, ignoreMissing = false) {
+    /**
+     * Load configuration values from a JSON file.
+     * @param filePath The file to load. Defaults to ".env.json".
+     * @param ignoreMissing If true, will not throw an error if the file does not exist. Defaults to true.
+     */
+    fromJSON({ filePath = '.env.json', ignoreMissing = true }: {filePath?: string, ignoreMissing?: boolean} = {}) {
         if (!fs.existsSync(filePath)) {
             if (ignoreMissing) return this;
             throw Error(`JSON Config file not found: ${filePath}`);
@@ -201,11 +224,62 @@ export class ConfigPanel <
         return this;
     }
 
-    toJSON(filePath: string) {
+    toJSON(filePath: string = '.env.json') {
         fs.writeFileSync(filePath, JSON.stringify(this.rawInputMap, null, 2), 'utf-8');
         return this;
     }
 
+    /**
+     * Load configuration values from command-line arguments.
+     * After this is called, any remaining positional arguments can be found in the `positionals` property.
+     */
+    fromArgs(opts: ParseArgsConfig = {}) {
+        const setters: Record<string, (val: any) => void> = {};
+        const descriptors: ParseArgsOptionsConfig = {};
+        for (const confCat in this.configMap) {
+            for (const confKey in this.configMap[confCat]) {
+                const conf: ConfigDefinition = this.configMap[confCat][confKey];
+                if (!conf.argName) continue;
+                descriptors[conf.argName] = {
+                    type: 'string',
+                    default: conf.default,
+                    short: conf.argShort,
+                }
+                if (!conf.argShort) delete descriptors[conf.argName].short;
+                setters[conf.argName] = (val: any) => this.setRawValue([confCat, confKey], val, conf);
+            }
+        }
+        const { values, positionals } = parseArgs({
+            allowPositionals: true,
+            allowNegative: true,
+            strict: false,
+            ...opts,
+            args: process.argv,
+            options: descriptors,
+        });
+        for (const argName in setters) {
+            if (argName in values) {
+                setters[argName](values[argName]);
+            }
+        }
+        this.positionals.push(...positionals);
+        return this;
+    }
+
+    /**
+     * Load configuration values from all standard sources, in order:
+     * 1. Environment variables
+     * 2. JSON file
+     * 3. Command-line arguments
+     *
+     * For more control, call the individual methods instead.
+     */
+    load() {
+        return this
+            .fromEnvironment()
+            .fromJSON()
+            .fromArgs()
+    }
     //TODO: fromYaml(filePath: string, ignoreMissing = false)
 
     /**
@@ -228,7 +302,18 @@ export class ConfigPanel <
 
         let parsed = null;
         if (defConfig) {
-            parsed = valueNode[path[path.length - 1]] = defConfig.type.parse(rawValue);
+            try {
+                parsed = valueNode[path[path.length - 1]] = defConfig.type.parse(rawValue);
+            } catch (err) {
+                if (err instanceof z.ZodError) {
+                    err = new Error(
+                        `Invalid value for ${path.join('.')}: `
+                        + err.issues.map(i => i.message).join('; ')
+                        + ` (${rawValue})`
+                    );
+                }
+                throw err;
+            }
         } else {
             this.isValueMapDirty = true;
         }
@@ -350,7 +435,7 @@ export class ConfigPanel <
      *
      * Example usage:
      * ```typescript
-     * panel.on(panel.getChangeKey('test_cat', 'test_number'), data => console.log(data));
+     * panel.on(panel.getChangeKey('category', 'property'), data => console.log(data));
      * ```
      */
     getChangeKey<
@@ -360,7 +445,6 @@ export class ConfigPanel <
     >(cat: C, def?: P): ChangeEventKey<V> {
         return (`change.${cat}` + def ? `.${def}` : '') as any;
     }
-
     key = this.getChangeKey;
 
     /**
@@ -395,6 +479,7 @@ export class ConfigPanel <
         }
         return this;
     }
+    open = this.startInterface;
 
     /**
      * Launch the configuration panel in a system browser window, blocking the current thread until the panel is closed.
