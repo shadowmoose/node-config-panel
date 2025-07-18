@@ -1,7 +1,4 @@
-import { exec, fork } from "node:child_process";
-import { fileURLToPath } from 'url';
-import path from 'path';
-import { type ConfigData } from "./browser.worker.ts";
+import { exec, type fork } from "node:child_process";
 import { z } from "zod";
 import EventEmitter from "events";
 import * as fs from "node:fs";
@@ -11,18 +8,31 @@ import * as http from "node:http";
 import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "util";
 
 
-function launch(opts: ConfigData, controller: AbortController) {
-    if (process.send !== undefined) throw Error('Cannot run as a worker process!');
-
-    const __filename = fileURLToPath(import.meta.url);
-    const fileExt = path.extname(__filename);
-    const __dirname = path.dirname(__filename);
-    const { signal } = controller;
-    const child = fork(path.join(__dirname, `browser.worker${fileExt}`), process.argv.slice(2), { signal });
-
-    child.send(JSON.stringify(opts));
-
-    return child;
+export interface ConfigData {
+    /** Optional title for the panel. */
+    title?: string,
+    /** Custom CSS to inject into the panel. */
+    style?: string,
+    /** Extra custom HTML to inject into the panel before the categories (e.g. for custom header). */
+    htmlHeader?: string,
+    /** Extra custom HTML to inject into the panel after the categories (e.g. for custom footer). */
+    htmlFooter?: string,
+    /** Port to run local server on. Defaults to 0 (random available port). */
+    port: number,
+    /** Host to run local server on. Defaults to 'localhost'. */
+    host?: string,
+    /**
+     * How to display the panel.
+     * + `webview` (default) uses an embedded webview window,
+     * + `browser` opens the default system browser,
+     * + `none` does not open any window. The server URL must be opened manually.
+     */
+    displayMethod?: 'browser'|'none',
+    /**
+     * Whether to keep the listening server open after the window/browser is closed.
+     * Defaults to false.
+     */
+    stayOpen?: boolean,
 }
 
 async function openUrl(url: string) {
@@ -357,7 +367,7 @@ export class ConfigPanel <
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(
                 makePageHTML(
-                    config?.windowOptions?.title || 'Config Panel',
+                    config?.title || 'Config Panel',
                     (config?.htmlHeader || '') + this.buildHtml() + (config?.htmlFooter || ''),
                     config?.style || '',
                 )
@@ -378,7 +388,7 @@ export class ConfigPanel <
                 ws.terminate();
             });
             ws.on('close', () => {
-                if (config?.killOnClose ?? true) this.closePanel('panel closed by user');
+                if (!(config?.stayOpen ?? false)) this.closePanel('panel closed by user');
             })
             ws.on('message', (message: string) => {
                 const msg = JSON.parse(message);
@@ -450,8 +460,8 @@ export class ConfigPanel <
     /**
      * Launch the configuration panel in a system browser window.
      */
-    async startInterface(config?: Partial<ConfigData>) {
-        const displayMethod = config?.displayMethod || 'webview';
+    async startInterface(config?: Partial<ConfigData>, callback?: (port: number) => void) {
+        const displayMethod: ConfigData["displayMethod"] = config?.displayMethod ?? 'browser';
         await this.startWss(config);
 
         if (displayMethod === 'browser') {
@@ -461,22 +471,8 @@ export class ConfigPanel <
                     Error('Failed to open URL in a browser: http://localhost:'+this.wssPort)
                 );
             }
-        } else if (displayMethod === 'webview') {
-            this.child = launch({
-                ...config,
-                port: this.wssPort,
-            }, this.abortCtrl);
-            this.child.on('error', (err) => {
-                if (!this.abortCtrl.signal.aborted) {
-                    this.emit('error', err);
-                }
-            });
-            this.child.once('exit', (code) => {
-                if (config?.killOnClose ?? true) {
-                    this.closePanel('exit' + (code ? ` code ${code}` : ''));
-                }
-            });
         }
+        if (callback) callback(this.wssPort);
         return this;
     }
     open = this.startInterface;

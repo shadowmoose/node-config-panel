@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@webviewjs/webview':
-        specifier: ^0.1.3
-        version: 0.1.3
       ws:
         specifier: ^8.18.3
         version: 8.18.3
@@ -65,53 +62,6 @@ packages:
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
-
-  '@webviewjs/webview-android-arm-eabi@0.1.3':
-    resolution: {integrity: sha512-LHDRUQrKYP4xvowWn1gZBrKetxDgJ7UM9eevUaTJUtPNVI2r5Ucj0yZoXgUPVtFRuU0OsDEOyB2DrnEcMCSWNQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm]
-    os: [android]
-
-  '@webviewjs/webview-android-arm64@0.1.3':
-    resolution: {integrity: sha512-GiGdMJh3CFW18HVk+5r35iznav5bGH+xqp3WfjkbFssRD4fOE3edDZia4FLHn4oMNdmQduTTvmVXg6fBB7kNfQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [android]
-
-  '@webviewjs/webview-darwin-arm64@0.1.3':
-    resolution: {integrity: sha512-eRxjO52b/qLY4PeGWaeJZjhrk2zHncbA9N9BGQJEhSxa/E8c/SsFfS868c0oqbfCreGqhRE8aFAu2dpGUvX8FQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@webviewjs/webview-darwin-x64@0.1.3':
-    resolution: {integrity: sha512-iKqSM0QDPwfB9rO1pwBxXD1Ve/380CSOz8sdIikED78qvieUsalqA93ihZGdCkl4SihhPZQ8n+mX5TH5/gfkhg==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@webviewjs/webview-win32-arm64-msvc@0.1.3':
-    resolution: {integrity: sha512-RaReXxoCW0HJ3srNVlsBPrHd/4LwvjR0g0ehZmjjQ8fI6URJ23IAEuwcDhBPMs+0BfSdLinegzEBaUwwLoMRjg==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@webviewjs/webview-win32-ia32-msvc@0.1.3':
-    resolution: {integrity: sha512-tScltp4cNutz5OeXDo3jWqD4jOy6yg2R31pUCDGa03zH/YsVzEHXqsueUvl3iRkVh/bpAQ0iBgPJ9QzBC2D6qg==}
-    engines: {node: '>= 10'}
-    cpu: [ia32]
-    os: [win32]
-
-  '@webviewjs/webview-win32-x64-msvc@0.1.3':
-    resolution: {integrity: sha512-x+VYx/+26U+NPvqWZAKQUhRe/ZKVO0xxPwCEwUCQ5iATW+Iyvgqy+btoKlgqUXHo1lxQX1p5+nFyIbrNEc74Pg==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [win32]
-
-  '@webviewjs/webview@0.1.3':
-    resolution: {integrity: sha512-bDs1Iqg5VGCpnURMlFSLS6L1eM2I7LfbUbj80/XajFKEX1rd5lT3kR6JPJy0QGyNSDO0vKuwd6prfl9+hYWRDg==}
-    engines: {node: '>= 10'}
-    hasBin: true
 
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
@@ -233,37 +183,6 @@ snapshots:
   '@types/ws@8.18.1':
     dependencies:
       '@types/node': 24.0.13
-
-  '@webviewjs/webview-android-arm-eabi@0.1.3':
-    optional: true
-
-  '@webviewjs/webview-android-arm64@0.1.3':
-    optional: true
-
-  '@webviewjs/webview-darwin-arm64@0.1.3':
-    optional: true
-
-  '@webviewjs/webview-darwin-x64@0.1.3':
-    optional: true
-
-  '@webviewjs/webview-win32-arm64-msvc@0.1.3':
-    optional: true
-
-  '@webviewjs/webview-win32-ia32-msvc@0.1.3':
-    optional: true
-
-  '@webviewjs/webview-win32-x64-msvc@0.1.3':
-    optional: true
-
-  '@webviewjs/webview@0.1.3':
-    optionalDependencies:
-      '@webviewjs/webview-android-arm-eabi': 0.1.3
-      '@webviewjs/webview-android-arm64': 0.1.3
-      '@webviewjs/webview-darwin-arm64': 0.1.3
-      '@webviewjs/webview-darwin-x64': 0.1.3
-      '@webviewjs/webview-win32-arm64-msvc': 0.1.3
-      '@webviewjs/webview-win32-ia32-msvc': 0.1.3
-      '@webviewjs/webview-win32-x64-msvc': 0.1.3
 
   argparse@2.0.1: {}
 

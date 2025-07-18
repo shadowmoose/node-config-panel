@@ -56,20 +56,13 @@ await conf
         prefix: 'TEST_',
         envFile: '.env',
     }).startInterface({
-        windowOptions: {
-            title: 'Test Config Panel',
-            width: 350,
-            height: 500,
-        },
-        webviewOptions: {
-            openDevtools: false,
-        },
-        displayMethod: 'webview', // 'browser' | 'webview' | 'none'
+        title: 'Test Config Panel',
+        displayMethod: 'none', // 'browser' | 'none'
         port: 0, // Use random available port.
         host: '0.0.0.0', // Allow remote access for configuration.
         htmlHeader: '<h1 style="text-align: center">Configuration Panel</h1>',
         htmlFooter: '<p style="font-size: small;text-align: center">Generated Panel Demo</p>',
-    });
+    }, port => console.log(`Config panel running at http://localhost:${port}`));
 
 const results = await conf.waitForClose();
 

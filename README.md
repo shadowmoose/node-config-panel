@@ -5,10 +5,10 @@
 # Config Panel
 This is my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
 
-This library provides a visual configuration panel, working cross-platform via native webviews or browsers, 
+This library provides a visual configuration panel, working cross-platform via browsers, 
 in order to expose real-time configuration options to users in a friendly way.
 
-Because it is web-based, the config panel also supports remote access via web browser.
+Because it is web-based, the config panel also supports remote access.
 
 All configuration values are strongly typed, and validated before being accepted.
 The panel can load/save from JSON files and environment variables, and can be extended to support other formats.
@@ -81,7 +81,7 @@ await config
             width: 350,
             height: 320,
         },
-        displayMethod: 'webview', // 'webview' | 'browser' | 'none'
+        displayMethod: 'browser', // 'browser' | 'none'
         port: 0, // Use random available port.
         host: '0.0.0.0', // Bind to all interfaces to allow remote access.
         // Optional custom CSS/HTML to apply to the panel. Everything has simple class names to make this easy.
