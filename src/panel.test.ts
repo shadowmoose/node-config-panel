@@ -1,6 +1,7 @@
 import { ConfigPanel, InputType } from "./main.ts";
 import { z } from "zod";
-import { describe, it, type TestContext } from 'node:test';
+import { after, describe, it, type TestContext } from 'node:test';
+import * as fs from "node:fs";
 
 // Manually configure environment and args for testing
 process.env['FISH_TYPE'] = 'Trout';
@@ -53,6 +54,10 @@ const conf = new ConfigPanel({
 const values = conf.values;
 
 describe('Happy Path Tests', () => {
+    after(() => {
+        if (fs.existsSync('test.env.json')) fs.unlinkSync('test.env.json');
+    });
+
     it('Values Load', (t: TestContext) => {
         t.assert.ok(conf.values, 'Values should be defined after loading from sources');
     });
@@ -64,5 +69,21 @@ describe('Happy Path Tests', () => {
 
     it('Environmental boolean parsed', (t: TestContext) => {
         t.assert.equal(values.test_cat.test_boolean, false, 'Boolean should be false' );
+    });
+
+    it('Saving and Loading env files', ({ assert }) => {
+        conf.setRaw('cat_2', 'test_enum', 'Salmon');
+        conf.toJSON('test.env.json');
+        conf.fromJSON({ filePath: 'test.env.json' });
+        assert.equal(conf.values.cat_2.test_enum, 'Salmon', 'Reassigned enum should have changed.' );
+    });
+
+    it('Values reference stays valid', ({ assert }) => {
+        const values = conf.values;
+        const testCat = values.test_cat;
+        const newValue = `${Date.now()}`;
+        conf.set('test_cat', 'text_string', newValue);
+        assert.equal(values.test_cat.text_string, newValue, 'Reference to values was clobbered!' );
+        assert.equal(testCat.text_string, newValue, 'Reference to category was clobbered!' );
     });
 })

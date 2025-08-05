@@ -40,7 +40,7 @@ async function openUrl(url: string) {
     for (const cmd of commands) {
         try {
             await new Promise((res, rej) => {
-                exec(`${cmd} ${url}`, (error, stdout, stderr) => {
+                exec(`${cmd} ${url}`, (error) => {
                     if (error) rej(error);
                     res(!!error);
                 }).unref();
@@ -77,6 +77,8 @@ export interface ConfigDefinition {
     argName?: string;
     /** If defined, uses this single-character command-line argument name instead of none. */
     argShort?: string;
+    /** If defined, appends these classes to the auto-generated HTML element for this config element. */
+    customClasses?: string[];
     /** If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type. */
     toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
     /** If true, will not generate a label for this config element. Useful when implementing custom `toHtml`. */
@@ -102,6 +104,10 @@ type StringKeys<T> = Extract<keyof T, string>;
  * Representation of a change event key. Generate these using `ConfigPanel.getChangeKey`.
  */
 type ChangeEventKey<T> = string & { _fake: never }
+/** Flag all values within an object as read-only, recursively. */
+type DeepReadonly<TInput> = {
+    readonly [Key in keyof TInput]: TInput[Key] extends object ? DeepReadonly<TInput[Key]>: TInput[Key];
+}
 
 /**
  * A configuration panel that can be launched in a browser window.
@@ -445,7 +451,7 @@ export class ConfigPanel <
      *
      * Example usage:
      * ```typescript
-     * panel.on(panel.getChangeKey('category', 'property'), data => console.log(data));
+     * panel.on(panel.key('category', 'property'), data => console.log(data));
      * ```
      */
     getChangeKey<
@@ -516,15 +522,42 @@ export class ConfigPanel <
     /**
      * Current configuration values, updated in real-time as the user makes changes.
      *
-     * Note that these values are not always validated until `validate()` is called.
-     * If realtime, validated values are needed, call `validate()` and use the result.
+     * These values are read-only. To change a value, use {@link set} or {@link setRaw}.
      */
-    get values(): VALS {
+    get values(): DeepReadonly<VALS> {
         if (this.isValueMapDirty) {
-            this.valueMap = this.zodSchema.parse(this.rawInputMap) as any;
+            Object.assign(this.valueMap, this.zodSchema.parse(this.rawInputMap));
             this.isValueMapDirty = false;
         }
-        return this.valueMap as VALS;
+        return this.valueMap;
+    }
+
+    /**
+     * Set the value of a configuration property, expecting a string-encoded value formatted as would normally be input.
+     * The given value is parsed and validated immediately before assignment.
+     *
+     * For simpler, type-safe values, it may be preferable to use {@link set} instead.
+     */
+    setRaw<
+        C extends string & keyof DEFS,
+        P extends string & keyof DEFS[C],
+    >(cat: C, prop: P, value: string): z.infer<DEFS[C][P]['type']> {
+        const def = this.getConfigDefinition([cat, prop]);
+        return this.setRawValue([cat, prop], value, def) as any;
+    }
+
+    /**
+     * Set the value of a configuration property. This is a type-safe version of {@link setRaw},
+     * and expects that the value can be converted directly into a string.
+     *
+     * For more complex types with advanced encoding, use {@link setRaw}.
+     */
+    set<
+        C extends string & keyof DEFS,
+        P extends string & keyof DEFS[C],
+        T extends z.infer<DEFS[C][P]['type']>
+    >(cat: C, prop: P, value: T): z.infer<DEFS[C][P]['type']> {
+        return this.setRaw(cat, prop, `${value}`);
     }
 
     /**
@@ -604,9 +637,11 @@ function formatElementHtml(path: string[], confDef: ConfigDefinition, currentVal
     if (!confDef.skipLabel) {
         html = `<label for="${eleId}">${confDef.displayName}</label>${html}`;
     }
-    return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')}" title="${confDef.description || ''}">
+    const customClassStr = confDef.customClasses?.join(' ') || '';
+
+    return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')} ${customClassStr}" title="${confDef.description || ''}">
         ${html}
-        <div id="error-${eleId}" class="error_msg error_mesg_${confDef.type.def.type}"></div>
+        <div id="error-${eleId}" class="error_msg error_msg_${confDef.type.def.type}"></div>
     </div>`;
 }
 
