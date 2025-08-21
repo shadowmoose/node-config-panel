@@ -527,10 +527,16 @@ export class ConfigPanel <
         P extends string & keyof DEFS[C],
     >(cat: C, prop: P, enabled: boolean) {
         console.log(`Toggling element ${cat}.${prop} to ${enabled}`);
-        return this.sendWss({
-            enable: enabled,
-            id: pathToElementId([cat, prop]),
-        })
+        const conf = this.getConfigDefinition([cat, prop]);
+        if (conf) {
+            conf.elementDisabled = !enabled;
+            return this.sendWss({
+                enable: enabled,
+                id: pathToElementId([cat, prop]),
+            })
+        } else {
+            throw Error(`Config element ${cat}.${prop} not found.`);
+        }
     }
 
     /**
