@@ -96,7 +96,18 @@ export interface ConfigDefinition {
     argShort?: string;
     /** If defined, appends these classes to the auto-generated HTML element for this config element. */
     customClasses?: string[];
-    /** If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type. */
+    /**
+     * If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type.
+     *
+     * The HTML should utilize several special data tags that will be replaced with the values the panel expects.
+     * They are:
+     * + `data-all` - shorthand to automatically inject the other general data-tags.
+     * + `data-id`  - The custom ID of the element, based off its category and name. 'id="gen_id"'
+     * + `data-classes` - Any custom class names applied in the Config. 'class="class1 class2"'
+     * + `data-css` - Custom CSS style rules applied directly to the element. 'style="border: 1px;"'
+     * + `data-checked` - Sets (or omits) the "checked" flag for radio buttons and checkboxes. 'checked'
+     * + `VAL` - The current value of the config element, as a double-quoted string. 'value=VAL' -> 'value="test-value"'
+     */
     toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
     /** Inline CSS styles to apply to the auto-generated HTML element for this config element. */
     css?: string|string[];
