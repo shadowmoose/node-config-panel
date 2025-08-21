@@ -1,12 +1,15 @@
-import { exec, type fork } from "node:child_process";
+import { exec } from "node:child_process";
 import { z } from "zod";
 import EventEmitter from "events";
 import * as fs from "node:fs";
 import { type AddressInfo, type Server, WebSocket, WebSocketServer } from "ws";
 import { clearInterval } from "node:timers";
 import * as http from "node:http";
-import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "util";
+import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "node:util";
+import { Helpers as H } from "./helpers.ts";
 
+
+export { Helpers } from "./helpers.ts";
 
 export interface ConfigData {
     /** Optional title for the panel. */
@@ -60,6 +63,7 @@ export const InputType = {
 export interface CategoryConfig {
     displayName?: string;
     description?: string;
+    displayHtml?: string;
 }
 
 export interface ConfigDefinition {
@@ -143,11 +147,11 @@ export class ConfigPanel <
     DEFS extends Record<keyof CATS, Record<string, ConfigDefinition>>,
     VALS extends { [cat in keyof CATS]: { [key in keyof DEFS[cat]]: TypeOfConfigDef<DEFS[cat][key]> } }
 > extends EventEmitter {
-    private child?: ReturnType<typeof fork>;
     private readonly abortCtrl = new AbortController();
     private categories: CATS;
     private readonly configMap: DEFS;
     private readonly rawInputMap: Record<any, any> = {};
+    private readonly displayMap: Record<string, string> = {};
     private isValueMapDirty = true;
     private valueMap: VALS = {} as any;
     private zodSchema: z.ZodObject;
@@ -167,6 +171,7 @@ export class ConfigPanel <
         const validatorSchema: any = {};
         for (const catKey in defs) {
             if (!cats[catKey].displayName) cats[catKey].displayName = catKey;
+            if (cats[catKey].displayHtml) this.displayMap[catKey] = cats[catKey].displayHtml;
             const configs = defs[catKey];
             const validatorCat: any = {};
             for (const confKey in configs) {
@@ -175,15 +180,15 @@ export class ConfigPanel <
                 validatorCat[confKey] = confDef.type;
                 this.setRawValue([catKey, confKey], confDef.default ?? (confDef.type.def as any).defaultValue);
             }
-            validatorSchema[catKey] = z.object(validatorCat);
+            if (Object.keys(validatorCat).length) validatorSchema[catKey] = z.object(validatorCat);
         }
         this.zodSchema = z.object(validatorSchema);
         // Register listener for abort cleanup.
         this.abortCtrl.signal.addEventListener('abort', (reason) => {
+            this.wss?.clients.forEach((ws: any) => ws.terminate());
             this.server?.close();
             this.wss?.close();
             clearInterval(this.wssPing);
-            this.child?.kill();
             this.emit('exit', reason);
         })
     }
@@ -376,6 +381,7 @@ export class ConfigPanel <
                     config?.title || 'Config Panel',
                     (config?.htmlHeader || '') + this.buildHtml() + (config?.htmlFooter || ''),
                     config?.style || '',
+                    this.categories,
                 )
             );
         });
@@ -397,6 +403,7 @@ export class ConfigPanel <
                 if (!(config?.stayOpen ?? false)) this.closePanel('panel closed by user');
             })
             ws.on('message', (message: string) => {
+                if (!message.length) return;
                 const msg = JSON.parse(message);
                 if (msg['path']) {
                     try {
@@ -447,6 +454,36 @@ export class ConfigPanel <
     }
 
     /**
+     * Send HTML to a specific category in the panel, where it will be rendered.
+     *
+     * Be careful with the HTML you send, as it will be rendered directly in the panel.
+     * See {@link sendText} for a safer alternative that escapes HTML special characters.
+     *
+     * @param cat The category to target.
+     * @param html The HTML to display in the panel.
+     */
+    public sendHTML<C extends string & keyof DEFS>(cat: C, ...html: string[]) {
+        const content = html.join('\n');
+        if (content) {
+            this.displayMap[cat] = content;
+        } else {
+            delete this.displayMap[cat];
+        }
+        this.sendWss({ html: content ?? '', cat})
+    }
+
+    /**
+     * Send a text message to a specific category in the panel, escaping all HTML special characters.
+     *
+     * This is a safer alternative to {@link sendHTML}, as it prevents XSS attacks and other issues.
+     * @param cat
+     * @param text
+     */
+    public sendText<C extends string & keyof DEFS>(cat: C, ...text: string[]) {
+        return this.sendHTML(cat, ...text.map(t => H.escapeHtml(t)));
+    }
+
+    /**
      * Helper function to generate an event key for a given category and optional config key name.
      *
      * Example usage:
@@ -484,32 +521,10 @@ export class ConfigPanel <
     open = this.startInterface;
 
     /**
-     * Launch the configuration panel in a system browser window, blocking the current thread until the panel is closed.
-     *
-     * This call currently doesn't work, as the library has an internal error, but may work in the future.
-     */
-    /* TODO: startInterfaceSync(config?: Partial<ConfigData>) {
-        const result = startPanel({
-            ...config,
-            body: this.buildHtml(),
-            port: this.wssPort,
-        });
-        this.valueMap = this.zodSchema.parse(result) as any;
-        return this;
-    } */
-
-    /**
      * Returns true if the configuration panel is currently open and running.
      */
     get isRunning() {
         return !this.abortCtrl.signal.aborted;
-    }
-
-    /**
-     * The child process running the configuration panel, exposed for advanced use cases.
-     */
-    get childProcess() {
-        return this.child;
     }
 
     /**
@@ -576,6 +591,8 @@ export class ConfigPanel <
      *
      * This does not trigger the panel to close, call `closePanel()` first if needed -
      * otherwise this will wait for the user to close the panel.
+     *
+     * If `stayOpen` was set to true, this will wait indefinitely until the panel is closed programmatically.
      */
     async waitForClose() {
         if (this.isRunning) {
@@ -590,8 +607,9 @@ export class ConfigPanel <
             return `<div class="category wrapper_${catName}" id="cat_${catName}">
                 <h2 class="category_title ${catName}">${def.displayName}</h2>
                 ${ def.description ? `<p class="description ${catName}">${def.description}</p>` : '' }
+                <iframe class="html_display ${catName}" id="display-${catName}" sandbox="allow-same-origin"></iframe>
                 <div class="configs">
-                ${Object.entries(this.configMap[catName]).map(([confName, confDef]) => {
+                ${Object.entries(this.configMap[catName] ?? {}).map(([confName, confDef]) => {
                     if (confDef.hideFromUI) return;
                     const currentValue = this.rawInputMap[catName]?.[confName];
                     return formatElementHtml([catName, confName], confDef, currentValue);
@@ -697,7 +715,7 @@ function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
     }
 }
 
-function makePageHTML(title: string, body: string, style: string,) {
+function makePageHTML(title: string, body: string, style: string, cats: Record<string, CategoryConfig> = {}): string {
     return `<!DOCTYPE html>
 <html lang="en-us">
     <head>
@@ -736,10 +754,20 @@ function makePageHTML(title: string, body: string, style: string,) {
             margin-bottom: 0.5rem;
             margin-top: 0;
         }
+        .html_display {
+            display: none;
+            width: 100%;
+        }
         h2 {
             font-size: 1.5rem;
             margin: 0;
             padding: 0;
+        }
+        iframe {
+            background-color: transparent;
+            border: 0px none transparent;
+            padding: 0px;
+            overflow: hidden;
         }
         ${style || ''}
         </style>
@@ -750,12 +778,29 @@ function makePageHTML(title: string, body: string, style: string,) {
             const inputs = document.querySelectorAll('input, textarea, select');
             const values = {};
             
+            function setDisplayHtml(cat, html) {
+                const margin = 10;
+                const content = "<html><head>" +
+                 "<style>body {font-family: 'Segoe UI', Arial, sans-serif;color: #222;margin: "+
+                 margin + "px;padding: 0;}</style>" +
+                 "</head><body>" + html + '</body></html>';
+                const ele = document.getElementById('display-'+cat);
+                ele.addEventListener("load", () => {
+                  ele.style.height = (ele.contentWindow.document.documentElement.scrollHeight)+'px';
+                }, { once: true });
+                ele.srcdoc = content;
+                ele.style.display = html ? 'block' : 'none';
+            }
+            
             const socket = new WebSocket("ws://"+document.location.host);
             
-            socket.addEventListener("close", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
-            socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close this window.</h2>' );
+            socket.addEventListener("close", (event) => document.body.innerHTML = '<h2>Connection lost. Please close or reload this window.</h2>' );
+            socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close or reload this window.</h2>' );
             socket.addEventListener("message", (event) => {
                 const data = JSON.parse(event.data);
+                if (data.html) {
+                    setDisplayHtml(data.cat, data.html);
+                }
                 if (data.error) {
                     document.getElementById('error-'+data.id).textContent = data.error;
                 }
@@ -763,6 +808,7 @@ function makePageHTML(title: string, body: string, style: string,) {
                     document.getElementById('error-'+data.ok).textContent = '';
                 }
             });
+            setInterval(() => socket.send(''), 5_000);
             
             const sendValue = (path, value, id) => socket.send(JSON.stringify({ path, value, id }));
             
@@ -780,6 +826,14 @@ function makePageHTML(title: string, body: string, style: string,) {
                         input.addEventListener('input', () => sendValue(path, input.value, name));
                 }
             });
+            ${
+                // Encode the initial values and set them for each display.
+                Object.entries(cats).map(([catKey, catDef]) => {
+                    if (catDef.displayHtml) {
+                        return `setDisplayHtml(atob("${H.b64(catKey)}"), atob("${H.b64(catDef.displayHtml)}"));`;
+                    }
+                }).join('\n')
+            }
         </script>
     </body>
 </html>

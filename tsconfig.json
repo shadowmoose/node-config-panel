@@ -7,7 +7,7 @@
 
   "compilerOptions": {
     // Enable latest features
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext"],
     "target": "es2017",
     "module": "nodenext",
     "moduleResolution": "nodenext",
