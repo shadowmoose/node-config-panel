@@ -429,7 +429,6 @@ export class ConfigPanel <
                 this.emit('invalid_change', { path, rawValue, error: err });
             }
             ws.isAlive = true;
-            ws.on('error', console.error);
             ws.on('pong', () => ws.isAlive = true);
             ws.on('error', err => {
                 this.emit('error', err);
@@ -526,7 +525,6 @@ export class ConfigPanel <
         C extends string & keyof DEFS,
         P extends string & keyof DEFS[C],
     >(cat: C, prop: P, enabled: boolean) {
-        console.log(`Toggling element ${cat}.${prop} to ${enabled}`);
         const conf = this.getConfigDefinition([cat, prop]);
         if (conf) {
             conf.elementDisabled = !enabled;
@@ -872,7 +870,6 @@ function makePageHTML(title: string, body: string, style: string, cats: Record<s
                     document.getElementById('error-'+data.ok).textContent = '';
                 }
                 if (data.enable !== undefined) {
-                    console.log('Toggling element:', data);
                     document.getElementById(data.id).disabled = !data.enable;
                 }
             });
