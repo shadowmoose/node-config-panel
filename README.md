@@ -122,3 +122,8 @@ config.on(config.key('test_cat', 'test_number'), console.log); // Listen for cha
 config.on('error', console.error); // Listen for any errors that occur.
 config.on('exit', console.error); // Listen for when the panel is closed.
 ```
+
+All value references are preserved and updated as well, so accessing the latest values in the above example without implementing event logic is as simple as:
+```
+results.cat_2.test_enum
+```
