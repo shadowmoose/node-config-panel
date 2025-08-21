@@ -99,3 +99,6 @@ conf.toJSON('test.json');
 
 console.log('Validated input config:', results);
 console.log('IDE help test:', conf.values.cat_2.complex_string_array);
+
+// @ts-expect-error Write only error test
+conf.values.test_cat.text_string = 'invalid'; // This will trigger an error.

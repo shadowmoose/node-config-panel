@@ -3,20 +3,43 @@
 
 
 # Config Panel
-This is my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
+This is my personal configuration library, used primarily for rapid development of desktop Node/Bun apps.
+Because most others weren't type-safe enough for my liking.
 
-This low-dependency library provides a visual configuration panel, working cross-platform via browsers, 
-in order to expose real-time configuration options to users in a friendly way.
-
-Because it is web-based, the config panel also supports remote access.
+This low-dependency library provides all the usual config parsing
+(environment, JSON files, and arguments), and also bundles a web-based configuration panel that 
+offers an interactive experience to expose even the most complex configuration options to users in a friendly way.
 
 All configuration values are strongly typed, and validated before being accepted.
-The panel can load/save from JSON files and environment variables, and can be extended to support other formats.
+This means that even without the GUI, 
+the data parsed by this library is more reliable and easier to work with than most other packages.
+
+Because it is web-based, the config panel also offers support for long-running remote configuration.
+Basic display capabilities are included, allowing apps to display any data they wish within the UI, 
+updating live. Don't like the stock UI? No problem, you can customize it with your own CSS and HTML.
+
+Fetch the latest valid configuration values whenever you want, readily exposed as a simple object,
+or listen for changes to specific values as they happen.
+
+The UI even has support for non-configuration elements that nonetheless operate live,
+such as buttons and HTML data displays.
 
 [![screenshot](docs/screenshot.png)](docs/screenshot.png)
 
 > **Note:**  
-> The UI pictured above can be customized to your liking via CSS.
+> The UI pictured above can be customized to your liking via CSS
+> 
+## What data does it support?
+Anything you can model in Zod, and potentially more.
+
+Out of the box, the library has strong support for:
++ Standard text/number/boolean primitives.
++ Enums, with strongly-typed unions passed all the way through.
++ Arrays, including complex validation on each item.
++ Anything JSON serializable.
+
+The library also offers first-class support for custom Zod schemas and matching HTML elements, 
+which can be used to model essentially anything.
 
 ## Installation
 ```npm i @shadowmoose/config```
@@ -24,6 +47,7 @@ The panel can load/save from JSON files and environment variables, and can be ex
 [Check out the Documentation](https://shadowmoose.github.io/node-config-panel/latest) for more details.
 
 ## Example Usage
+Here's a long-winded example showcasing many of the supported features.
 ```typescript
 import { ConfigPanel, InputType } from "@shadowmoose/config";
 
@@ -72,11 +96,7 @@ await config
         prefix: 'TEST_', // Load existing config from environment variables, with optional prefix.
         envFile: '.env',
     }).startInterface({
-        windowOptions: {
-            title: 'Test Config Panel',
-            width: 350,
-            height: 320,
-        },
+        title: 'Test Config Panel',
         displayMethod: 'browser', // 'browser' | 'none'
         port: 0, // Use random available port.
         host: '0.0.0.0', // Bind to all interfaces to allow remote access.
