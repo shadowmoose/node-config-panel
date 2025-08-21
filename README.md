@@ -4,7 +4,7 @@
 
 # Config Panel
 This is my personal configuration library, used primarily for rapid development of desktop Node/Bun apps.
-Because most others weren't type-safe enough for my liking.
+Because most others weren't type-safe enough for my liking: 
 At last, a config library where ctrl+clicking actually takes you to the definition.
 
 This low-dependency library provides all the usual config parsing
