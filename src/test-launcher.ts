@@ -1,5 +1,5 @@
-import { ConfigPanel, Helpers, InputType } from "./main.ts";
-import { z } from "zod";
+import { ConfigPanel, Elements, Helpers, InputType } from "./main.ts";
+import { z } from "zod/v4";
 import { clearInterval } from "node:timers";
 
 
@@ -34,7 +34,19 @@ const conf = new ConfigPanel({
             type: z.string().transform(value => value.split(',')).pipe(z.string().trim().min(1).array()),
             default: 'one,two,three',
             useZodTypeName: 'string',
-        }
+        },
+        btn_test: Elements.Button({
+            text: 'Click Me!',
+            onClick: (_path, data) => {
+                console.log('Button clicked with data:', data);
+                conf.toggleElement('cat_2', 'btn_test', false);
+                setTimeout(() => conf.toggleElement('cat_2', 'btn_test', true), 2_000);
+            },
+            config: {
+                css: 'background: #04AA6D; border-radius: 4px; padding: 10px;',
+                elementDisabled: true,
+            }
+        })
     },
     display_cat: {}
 });
@@ -62,6 +74,7 @@ const timer = setInterval(() => {
         '<script> document.body.style.background = "black"; alert("Error") </script>'
     );
 }, 1_000).unref();
+setTimeout(() => conf.toggleElement('cat_2', 'btn_test', true), 5_000);
 
 await conf
     .load()
@@ -82,6 +95,7 @@ await conf
     }, port => console.log(`Config panel running at http://localhost:${port}`));
 
 const results = await conf.waitForClose();
+conf.toJSON('test.json');
 
 console.log('Validated input config:', results);
 console.log('IDE help test:', conf.values.cat_2.complex_string_array);

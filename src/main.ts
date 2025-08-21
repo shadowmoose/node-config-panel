@@ -1,5 +1,5 @@
 import { exec } from "node:child_process";
-import { z } from "zod";
+import { z } from "zod/v4";
 import EventEmitter from "events";
 import * as fs from "node:fs";
 import { type AddressInfo, type Server, WebSocket, WebSocketServer } from "ws";
@@ -7,9 +7,10 @@ import { clearInterval } from "node:timers";
 import * as http from "node:http";
 import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "node:util";
 import { Helpers as H } from "./helpers.ts";
-
+import { Elements } from "./elements.ts";
 
 export { Helpers } from "./helpers.ts";
+export { Elements };
 
 export interface ConfigData {
     /** Optional title for the panel. */
@@ -66,6 +67,18 @@ export interface CategoryConfig {
     displayHtml?: string;
 }
 
+// TODO: Attempt to close tab when the panel is closed?
+// TODO: Kiosk mode for supported browsers?
+// TODO: Maybe swap from setEnabled to setEleProperty() and make it more broadly useful.
+
+/**
+ * Every Config value can be heavily customized in terms of validation behavior and browser rendering.
+ *
+ * Everything is optional, except for the `type`, which is used to validate inputs from all sources.
+ *
+ * These config options expose in-depth customization for each Config entry.
+ * If such a thing is desired, entirely new HTML elements can be modeled using this configuration.
+ */
 export interface ConfigDefinition {
     /** The Zod type definition for this config element. */
     type: z.ZodType;
@@ -85,6 +98,10 @@ export interface ConfigDefinition {
     customClasses?: string[];
     /** If defined, applies custom HTML rendering for this config element. If undefined, tries to auto-generate based on zod type. */
     toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
+    /** Inline CSS styles to apply to the auto-generated HTML element for this config element. */
+    css?: string|string[];
+    /** If true, will disable this config element in the UI. This value can be toggled with `toggleElement`. */
+    elementDisabled?: boolean;
     /** If true, will not generate a label for this config element. Useful when implementing custom `toHtml`. */
     skipLabel?: boolean;
     /**
@@ -99,10 +116,14 @@ export interface ConfigDefinition {
      * but will still load from env or other sources and be available in `values`.
      */
     hideFromUI?: boolean;
+    /**
+     * If defined, this function will be called when the user interacts with the config element in the UI.
+     */
+    onInteract?: (path: string[], value: any) => any;
 }
 
 
-type TypeOfConfigDef<T extends ConfigDefinition> = z.infer<T['type']>;
+type TypeOfConfigDef<T extends ConfigDefinition> = T['type'] extends z.ZodUndefined ? 'test-val' : z.infer<T['type']>;
 type StringKeys<T> = Extract<keyof T, string>;
 /**
  * Representation of a change event key. Generate these using `ConfigPanel.getChangeKey`.
@@ -114,7 +135,22 @@ type DeepReadonly<TInput> = {
 }
 
 /**
- * A configuration panel that can be launched in a browser window.
+ * A configuration panel that can be launched in a browser window, or simply used to load values in a type-safe way.
+ *
+ * Example usage:
+ * ```typescript
+ * new ConfigPanel({
+ *     my_category: { displayName: 'My First Category', description: 'This is a test category' },
+ * }, {
+ *     my_category: {
+ *         text_string: {
+ *             type: InputType.string().max(20).default('test-default'),
+ *             displayName: 'Text String',
+ *             description: 'A simple text string input',
+ *         },
+ *     }
+ * });
+ * ```
  */
 export interface ConfigPanel<
     CATS extends Record<string, CategoryConfig>,
@@ -148,7 +184,7 @@ export class ConfigPanel <
     VALS extends { [cat in keyof CATS]: { [key in keyof DEFS[cat]]: TypeOfConfigDef<DEFS[cat][key]> } }
 > extends EventEmitter {
     private readonly abortCtrl = new AbortController();
-    private categories: CATS;
+    private readonly categories: CATS;
     private readonly configMap: DEFS;
     private readonly rawInputMap: Record<any, any> = {};
     private readonly displayMap: Record<string, string> = {};
@@ -156,7 +192,7 @@ export class ConfigPanel <
     private valueMap: VALS = {} as any;
     private zodSchema: z.ZodObject;
     private wss: Server|null = null;
-    private wssPort: number = 0;
+    private serverPort: number = 0;
     private wssPing: any = null;
     private server: http.Server|null = null;
     /** The raw positional arguments passed to the program. */
@@ -422,7 +458,7 @@ export class ConfigPanel <
             }
         });
         this.server.listen(config?.port || 0, config?.host || 'localhost');
-        this.wssPort = await new Promise<number>(resolve => {
+        this.serverPort = await new Promise<number>(resolve => {
             this.wss?.once('listening', () => {
                 resolve((this.wss?.address() as AddressInfo)?.port);
             });
@@ -438,7 +474,7 @@ export class ConfigPanel <
                 ws.ping();
             });
         }, 30_000).unref();
-        this.emit('port', this.wssPort);
+        this.emit('port', this.serverPort);
     }
 
     /**
@@ -484,6 +520,20 @@ export class ConfigPanel <
     }
 
     /**
+     * Enable or disable a specific configuration element in the panel.
+     */
+    public toggleElement<
+        C extends string & keyof DEFS,
+        P extends string & keyof DEFS[C],
+    >(cat: C, prop: P, enabled: boolean) {
+        console.log(`Toggling element ${cat}.${prop} to ${enabled}`);
+        return this.sendWss({
+            enable: enabled,
+            id: pathToElementId([cat, prop]),
+        })
+    }
+
+    /**
      * Helper function to generate a Change Event key for a given category and optional config key name.
      *
      * Example usage:
@@ -508,14 +558,14 @@ export class ConfigPanel <
         await this.startWss(config);
 
         if (displayMethod === 'browser') {
-            if (!await openUrl(`http://localhost:${this.wssPort}`)) {
+            if (!await openUrl(`http://localhost:${this.serverPort}`)) {
                 this.emit(
                     'error',
-                    Error('Failed to open URL in a browser: http://localhost:'+this.wssPort)
+                    Error('Failed to open URL in a browser: http://localhost:'+this.serverPort)
                 );
             }
         }
-        if (callback) callback(this.wssPort);
+        if (callback) callback(this.serverPort);
         return this;
     }
     open = this.startInterface;
@@ -531,7 +581,7 @@ export class ConfigPanel <
      * The port the internal websocket server is running on, for advanced use cases.
      */
     get httpPort() {
-        return this.wssPort;
+        return this.serverPort;
     }
 
     /**
@@ -624,6 +674,7 @@ export class ConfigPanel <
         const config = this.getConfigDefinition(path);
         const parsedVal = this.setRawValue(path, value, config);
 
+        if (config.onInteract) config.onInteract(path, parsedVal);
         this.emit('change', { path, value: parsedVal });
         this.emit(this.getChangeKey(path[0]), { path, value: parsedVal });
         this.emit(this.getChangeKey(path[0], path[1]), parsedVal);
@@ -645,21 +696,25 @@ function formatElementHtml(path: string[], confDef: ConfigDefinition, currentVal
     let quoteVal = JSON.stringify(currentValue || '');
     if (quoteVal[0] !== '"') quoteVal = `"${quoteVal}"`; // Ensure it's a string in quotes for HTML attributes
 
+    const customClassStr = confDef.customClasses?.map(c => c.replaceAll('"', '')).join(' ') || '';
+    const customCss = [confDef.css ?? []].flat().map(c => c.replaceAll('"', '')).join('; ');
     const eleId = pathToElementId(path);
     html = html
+        .replaceAll('data-all', `data-id data-classes data-css`)
         .replaceAll('data-id', `id="${eleId}"`)
-        .replaceAll('data-raw-name', path[path.length - 1])
+        .replaceAll('data-classes', `class="${customClassStr}"`)
+        .replaceAll('data-css', `style="${customCss}"`)
         .replaceAll('data-checked', currentValue ? 'checked' : '')
         .replaceAll('VAL', quoteVal);
 
     if (!confDef.skipLabel) {
         html = `<label for="${eleId}">${confDef.displayName}</label>${html}`;
     }
-    const customClassStr = confDef.customClasses?.join(' ') || '';
 
-    return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')} ${customClassStr}" title="${confDef.description || ''}">
+    return `<div class="option ${confDef.type.def.type} ${path.map(p=>`p_${p}`).join(' ')}" title="${confDef.description || ''}">
         ${html}
         <div id="error-${eleId}" class="error_msg error_msg_${confDef.type.def.type}"></div>
+        ${confDef.elementDisabled ? `<script>document.getElementById('${eleId}').disabled = true;</script>` : ''}
     </div>`;
 }
 
@@ -698,18 +753,18 @@ function makeElementHtml(conf: ConfigDefinition, currentValue: any): string {
 
     switch (type) {
         case 'string':
-            return `<input type="text" data-id value=VAL/>`;
+            return `<input type="text" data-id data-classes data-css value=VAL/>`;
         case 'number':
-            return `<input type="number" data-id value=VAL />`;
+            return `<input type="number" data-id data-classes data-css value=VAL />`;
         case 'boolean':
-            return `<input type="checkbox" data-id data-checked />`;
+            return `<input type="checkbox" data-id data-classes data-css data-checked />`;
         case 'enum':
             const opts = findZodOptions(conf.type);
             const options = opts.map((v: string) => {
                 const qv = JSON.stringify(v);
                 return `<option value=${qv} ${v === currentValue ? 'selected' : ''}>${v}</option>`;
             }).join('\n');
-            return `<select data-id>${options}</select>`;
+            return `<select data-id data-classes data-css>${options}</select>`;
         default:
             return `<div>Not implemented type: ${type}. Provide custom element HTML with "toHtml".</div>`;
     }
@@ -763,6 +818,9 @@ function makePageHTML(title: string, body: string, style: string, cats: Record<s
             margin: 0;
             padding: 0;
         }
+        input[type="button"] {
+            cursor: pointer;
+        }
         iframe {
             background-color: transparent;
             border: 0px none transparent;
@@ -798,19 +856,24 @@ function makePageHTML(title: string, body: string, style: string, cats: Record<s
             socket.addEventListener("error", (event) => document.body.innerHTML = '<h2>Connection lost. Please close or reload this window.</h2>' );
             socket.addEventListener("message", (event) => {
                 const data = JSON.parse(event.data);
-                if (data.html) {
+                if (data.html !== undefined) {
                     setDisplayHtml(data.cat, data.html);
                 }
-                if (data.error) {
+                if (data.error !== undefined) {
                     document.getElementById('error-'+data.id).textContent = data.error;
                 }
-                if (data.ok) {
+                if (data.ok !== undefined) {
                     document.getElementById('error-'+data.ok).textContent = '';
+                }
+                if (data.enable !== undefined) {
+                    console.log('Toggling element:', data);
+                    document.getElementById(data.id).disabled = !data.enable;
                 }
             });
             setInterval(() => socket.send(''), 5_000);
             
             const sendValue = (path, value, id) => socket.send(JSON.stringify({ path, value, id }));
+            window.sendButtonPress = (eventId) => socket.send(JSON.stringify({ event: eventId }));
             
             inputs.forEach(input => {
                 const name = input.id;
@@ -822,6 +885,8 @@ function makePageHTML(title: string, body: string, style: string, cats: Record<s
                     case 'radio':
                         input.addEventListener('change', () => sendValue(path, input.checked, name));
                         break;
+                    case 'button':
+                        input.addEventListener('click', () => sendValue(path, undefined, name));
                     default:
                         input.addEventListener('input', () => sendValue(path, input.value, name));
                 }
@@ -829,6 +894,15 @@ function makePageHTML(title: string, body: string, style: string, cats: Record<s
             ${
                 // Encode the initial values and set them for each display.
                 Object.entries(cats).map(([catKey, catDef]) => {
+                    if (catDef.displayHtml) {
+                        return `setDisplayHtml(atob("${H.b64(catKey)}"), atob("${H.b64(catDef.displayHtml)}"));`;
+                    }
+                }).join('\n')
+            }
+            ${
+                // Encode the initial values and set them for each display.
+                Object.entries(cats).map(([catKey, catDef]) => {
+                    
                     if (catDef.displayHtml) {
                         return `setDisplayHtml(atob("${H.b64(catKey)}"), atob("${H.b64(catDef.displayHtml)}"));`;
                     }
