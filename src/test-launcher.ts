@@ -44,8 +44,8 @@ conf.on('error', console.error);
 conf.on('exit', console.error);
 
 conf.on('change.test_cat', data => console.log(data));
-conf.on(conf.key('test_cat', 'test_number'), data => console.log(data));
-conf.on(conf.key('cat_2'), data => console.log(data));
+conf.on(conf.cKey('test_cat', 'test_number'), data => console.log(data));
+conf.on(conf.cKey('cat_2'), data => console.log(data));
 
 let count = 0;
 const timer = setInterval(() => {

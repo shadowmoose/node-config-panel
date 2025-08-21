@@ -107,7 +107,7 @@ type StringKeys<T> = Extract<keyof T, string>;
 /**
  * Representation of a change event key. Generate these using `ConfigPanel.getChangeKey`.
  */
-type ChangeEventKey<T> = string & { _fake: never }
+type ChangeEventKey<T> = string & { _branded: never }
 /** Flag all values within an object as read-only, recursively. */
 type DeepReadonly<TInput> = {
     readonly [Key in keyof TInput]: TInput[Key] extends object ? DeepReadonly<TInput[Key]>: TInput[Key];
@@ -484,11 +484,11 @@ export class ConfigPanel <
     }
 
     /**
-     * Helper function to generate an event key for a given category and optional config key name.
+     * Helper function to generate a Change Event key for a given category and optional config key name.
      *
      * Example usage:
      * ```typescript
-     * panel.on(panel.key('category', 'property'), data => console.log(data));
+     * panel.on(panel.getChangeKey('category', 'property'), data => console.log(data));
      * ```
      */
     getChangeKey<
@@ -498,7 +498,7 @@ export class ConfigPanel <
     >(cat: C, def?: P): ChangeEventKey<V> {
         return (`change.${cat}` + def ? `.${def}` : '') as any;
     }
-    key = this.getChangeKey;
+    cKey = this.getChangeKey;
 
     /**
      * Launch the configuration panel in a system browser window.

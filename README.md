@@ -5,7 +5,7 @@
 # Config Panel
 This is my personal configuration GUI, used primarily for rapid development of desktop Node/Bun apps.
 
-This library provides a visual configuration panel, working cross-platform via browsers, 
+This low-dependency library provides a visual configuration panel, working cross-platform via browsers, 
 in order to expose real-time configuration options to users in a friendly way.
 
 Because it is web-based, the config panel also supports remote access.
@@ -16,7 +16,7 @@ The panel can load/save from JSON files and environment variables, and can be ex
 [![screenshot](docs/screenshot.png)](docs/screenshot.png)
 
 > **Note:**  
-> This is an early release, and the API may change in future versions.
+> The UI pictured above can be customized to your liking via CSS.
 
 ## Installation
 ```npm i @shadowmoose/config```
@@ -36,17 +36,13 @@ const config = new ConfigPanel({
     // Define all config inputs, within each category.
     first_category: {
         text_string: {
-            type: InputType.string().max(20).default('test-default'),
+            type: InputType.string().max(20).default('test-default'), // Input types are just Zod schemas.
             displayName: 'Text String',
             description: 'A simple text string input',
         },
         test_number: {
-            type: InputType.number().min(0).max(100).default(50),
+            type: InputType.number().min(0).max(100).refine(value => value % 2 === 0, 'Number must be even'),
             displayName: 'Test Number',
-            customParser: (input: any) => {
-                if (parseInt(input) % 2 !== 0) throw Error('Number must be even');
-                return input;
-            }
         },
         test_boolean: {
             type: InputType.boolean().default(false),
@@ -116,9 +112,9 @@ console.log('Configured enum value:', results.cat_2.test_enum);
 All data updates are emitted as events, enabling real-time feedback and dynamic behavior if desired.
 Using the above example `config`, you can listen for events like so:
 ```typescript
-config.on('values', console.dir); // Listen for any changes to values.
-config.on('change.first_category', console.dir); // Listen for changes to values within a specific category. Strongly typed.
-config.on(config.key('test_cat', 'test_number'), console.log); // Listen for changes to a specific value. Strongly typed.
+config.on('values', console.dir); // Listen for changes to any values.
+config.on('change.first_category', console.dir); // Changes to values within a specific category. Strongly typed.
+config.on(config.getChangeKey('test_cat', 'test_number'), console.log); // Changes to a specific value. Strongly typed.
 config.on('error', console.error); // Listen for any errors that occur.
 config.on('exit', console.error); // Listen for when the panel is closed.
 ```
