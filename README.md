@@ -5,6 +5,7 @@
 # Config Panel
 This is my personal configuration library, used primarily for rapid development of desktop Node/Bun apps.
 Because most others weren't type-safe enough for my liking.
+At last, a config library where ctrl+clicking actually takes you to the definition.
 
 This low-dependency library provides all the usual config parsing
 (environment, JSON files, and arguments), and also bundles a web-based configuration panel that 
@@ -49,7 +50,7 @@ which can be used to model essentially anything.
 ## Example Usage
 Here's a long-winded example showcasing many of the supported features.
 ```typescript
-import { ConfigPanel, InputType } from "@shadowmoose/config";
+import { ConfigPanel, InputType, Elements } from "@shadowmoose/config";
 
 // Define a new configuration panel with strong types.
 const config = new ConfigPanel({
@@ -83,7 +84,16 @@ const config = new ConfigPanel({
             type: z.string().transform(value => value.split(',')).pipe(z.string().trim().min(1).array()),
             default: 'one,two,three', // Example transform from CSV into Array.
             useZodTypeName: 'string', // Render as a string input to the user.
-        }
+        },
+        btn_test: Elements.Button({
+            text: 'Click Me!', // Example button that temporarily disables itself when clicked.
+            onClick: (_path) => {
+                // Clicks are also emitted as events, so you could listen for it instead of using this callback.
+                console.log('Button clicked!');
+                conf.setEnabled('cat_2', 'btn_test', false); // All inputs are strongly typed.
+                setTimeout(() => conf.setEnabled('cat_2', 'btn_test', true), 2_000);
+            },
+        })
     }
 });
 
@@ -137,6 +147,15 @@ config.on('change.first_category', console.dir); // Changes to values within a s
 config.on(config.getChangeKey('test_cat', 'test_number'), console.log); // Changes to a specific value. Strongly typed.
 config.on('error', console.error); // Listen for any errors that occur.
 config.on('exit', console.error); // Listen for when the panel is closed.
+```
+
+## Data Visualization
+The library also supports sending data to the UI, for display or interaction.
+Here's some example code that updates the UI every second with a timer.
+```typescript
+setInterval(() => {
+    config.sendHTML('first_category', `<h3>Current Time: ${new Date().toLocaleTimeString()}</h3>`);
+}, 1_000); // Update every second.
 ```
 
 All value references are preserved and updated as well, so accessing the latest values in the above example without implementing event logic is as simple as:

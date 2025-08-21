@@ -39,8 +39,8 @@ const conf = new ConfigPanel({
             text: 'Click Me!',
             onClick: (_path, data) => {
                 console.log('Button clicked with data:', data);
-                conf.toggleElement('cat_2', 'btn_test', false);
-                setTimeout(() => conf.toggleElement('cat_2', 'btn_test', true), 2_000);
+                conf.setEnabled('cat_2', 'btn_test', false);
+                setTimeout(() => conf.setEnabled('cat_2', 'btn_test', true), 2_000);
             },
             config: {
                 css: 'background: #04AA6D; border-radius: 4px; padding: 10px;',
@@ -74,7 +74,7 @@ const timer = setInterval(() => {
         '<script> document.body.style.background = "black"; alert("Error") </script>'
     );
 }, 1_000).unref();
-setTimeout(() => conf.toggleElement('cat_2', 'btn_test', true), 5_000);
+setTimeout(() => conf.setEnabled('cat_2', 'btn_test', true), 5_000);
 
 await conf
     .load()

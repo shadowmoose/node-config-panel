@@ -100,7 +100,7 @@ export interface ConfigDefinition {
     toHtml?: (conf: ConfigDefinition, currentValue: any) => string;
     /** Inline CSS styles to apply to the auto-generated HTML element for this config element. */
     css?: string|string[];
-    /** If true, will disable this config element in the UI. This value can be toggled with `toggleElement`. */
+    /** If true, will disable this config element in the UI. This value can be toggled with `setEnabled`. */
     elementDisabled?: boolean;
     /** If true, will not generate a label for this config element. Useful when implementing custom `toHtml`. */
     skipLabel?: boolean;
@@ -522,7 +522,7 @@ export class ConfigPanel <
     /**
      * Enable or disable a specific configuration element in the panel.
      */
-    public toggleElement<
+    public setEnabled<
         C extends string & keyof DEFS,
         P extends string & keyof DEFS[C],
     >(cat: C, prop: P, enabled: boolean) {
