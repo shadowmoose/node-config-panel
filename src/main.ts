@@ -9,6 +9,7 @@ import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "no
 import { Helpers as H } from "./helpers.ts";
 import { Elements } from "./elements.ts";
 
+
 export { Helpers } from "./helpers.ts";
 export { Elements };
 
@@ -27,8 +28,7 @@ export interface ConfigData {
     host?: string,
     /**
      * How to display the panel.
-     * + `webview` (default) uses an embedded webview window,
-     * + `browser` opens the default system browser,
+     * + `browser` (default) opens the default system browser,
      * + `none` does not open any window. The server URL must be opened manually.
      */
     displayMethod?: 'browser'|'none',
@@ -37,6 +37,12 @@ export interface ConfigData {
      * Defaults to false.
      */
     stayOpen?: boolean,
+    /** If true, will unref the server to allow the program to exit naturally. Defaults to true. */
+    unrefServer?: boolean,
+    /**
+     * If provided, uses this existing HTTP server instead of starting a new one.
+     */
+    existingServer: http.Server,
 }
 
 async function openUrl(url: string) {
@@ -68,6 +74,7 @@ export interface CategoryConfig {
 }
 
 // TODO: Attempt to close tab when the panel is closed?
+// TODO: More elements: Sliders, color pickers, file inputs, dates, tabbed panels?
 // TODO: Kiosk mode for supported browsers?
 // TODO: Maybe swap from setEnabled to setEleProperty() and make it more broadly useful.
 
@@ -134,6 +141,7 @@ export interface ConfigDefinition {
 }
 
 
+/** Infer the type of a ConfigDefinition's value. */
 type TypeOfConfigDef<T extends ConfigDefinition> = T['type'] extends z.ZodUndefined ? 'test-val' : z.infer<T['type']>;
 type StringKeys<T> = Extract<keyof T, string>;
 /**
@@ -421,7 +429,7 @@ export class ConfigPanel <
 
     private async startWss(config: Partial<ConfigData>|undefined) {
         if (this.server) return;
-        this.server = http.createServer((_req, res) => {
+        this.server = config?.existingServer ?? http.createServer((_req, res) => {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(
                 makePageHTML(
@@ -467,12 +475,22 @@ export class ConfigPanel <
                 }
             }
         });
-        this.server.listen(config?.port || 0, config?.host || 'localhost');
-        this.serverPort = await new Promise<number>(resolve => {
-            this.wss?.once('listening', () => {
-                resolve((this.wss?.address() as AddressInfo)?.port);
+        if (!config?.existingServer) {
+            if (config?.unrefServer ?? true) this.server.unref();
+            this.server.listen(config?.port || 0, config?.host || 'localhost');
+            this.serverPort = await new Promise<number>(resolve => {
+                this.wss?.once('listening', () => {
+                    resolve((this.wss?.address() as AddressInfo)?.port);
+                });
             });
-        });
+        } else {
+            if (config.port) {
+                this.serverPort = config.port;
+            } else {
+                const addr = this.server.address() as AddressInfo;
+                if (addr && Object.hasOwn(addr, 'port')) this.serverPort = addr.port;
+            }
+        }
         this.wssPing = setInterval(() => {
             if (!this.isRunning) {
                 this.wss?.close();
