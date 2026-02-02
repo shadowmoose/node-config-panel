@@ -37,7 +37,7 @@ export interface ConfigData {
      * Defaults to false.
      */
     stayOpen?: boolean,
-    /** If true, will unref the server to allow the program to exit naturally. Defaults to true. */
+    /** If true, will unref the server, so that it will not block program exit. Defaults to true. */
     unrefServer?: boolean,
     /**
      * If provided, uses this existing HTTP server instead of starting a new one.
@@ -139,7 +139,6 @@ export interface ConfigDefinition {
      */
     onInteract?: (path: string[], value: any) => any;
 }
-
 
 /** Infer the type of a ConfigDefinition's value. */
 type TypeOfConfigDef<T extends ConfigDefinition> = T['type'] extends z.ZodUndefined ? 'test-val' : z.infer<T['type']>;
@@ -448,6 +447,7 @@ export class ConfigPanel <
                 this.emit('invalid_change', { path, rawValue, error: err });
             }
             ws.isAlive = true;
+            if (config?.unrefServer ?? true) (ws as any)._socket.unref();
             ws.on('pong', () => ws.isAlive = true);
             ws.on('error', err => {
                 this.emit('error', err);
