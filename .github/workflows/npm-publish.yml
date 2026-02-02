@@ -13,11 +13,13 @@ on:
 
 run-name: Release & Publish version ${{ inputs.version }} to NPM, by @${{ github.actor }}
 
+permissions:
+  id-token: write  # Required for NPM OIDC
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout Code
@@ -53,10 +55,7 @@ jobs:
 
       - name: Publish to NPM
         shell: bash
-        run: pnpm publish ./ --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish ./ --access public --no-git-checks --provenance
 
       - name: Create Release Bundle
         run: tar -czvf dist.tar.gz dist
