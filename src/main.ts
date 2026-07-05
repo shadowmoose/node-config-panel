@@ -8,6 +8,7 @@ import * as http from "node:http";
 import { parseArgs, type ParseArgsConfig, type ParseArgsOptionsConfig } from "node:util";
 import { Helpers as H } from "./helpers.ts";
 import { Elements } from "./elements.ts";
+import crypto from "node:crypto";
 
 
 export { Helpers } from "./helpers.ts";
@@ -301,6 +302,24 @@ export class ConfigPanel <
 
     toJSON(filePath: string = '.env.json') {
         fs.writeFileSync(filePath, JSON.stringify(this.rawInputMap, null, 2), 'utf-8');
+        return this;
+    }
+
+    /**
+     * Encrypt configuration values and return them as an encoded string.
+     */
+    toEncryptedString(opts: { key: string }) {
+        const data = JSON.stringify(this.rawInputMap);
+        return encrypt(data, opts.key);
+    }
+
+    /**
+     * Load configuration values from an encrypted string of data.
+     */
+    fromEncryptedString(opts: { data: string, key: string }) {
+        const data = JSON.parse(decrypt(opts.data, opts.key));
+        Object.assign(this.rawInputMap, data);
+        this.isValueMapDirty = true;
         return this;
     }
 
@@ -944,4 +963,43 @@ function makePageHTML(title: string, body: string, style: string, cats: Record<s
     </body>
 </html>
 `;
+}
+
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 12;
+const SALT_LENGTH = 16;
+/**
+ * Encrypts a plain text string using a password
+ */
+function encrypt(text: string, password: string) {
+    const salt = crypto.randomBytes(SALT_LENGTH);
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const key = crypto.scryptSync(password, salt, 32);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    const authTag = cipher.getAuthTag().toString('hex');
+
+    return `${salt.toString('hex')}:${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+/**
+ * Decrypts an encrypted string using the same password
+ */
+function decrypt(encryptedPayload: string, password: string) {
+    const [saltHex, ivHex, authTagHex, encryptedText] = encryptedPayload.split(':');
+
+    const salt = Buffer.from(saltHex, 'hex');
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    const key = crypto.scryptSync(password, salt, 32);
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
 }

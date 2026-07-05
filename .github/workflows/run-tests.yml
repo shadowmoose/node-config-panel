@@ -4,7 +4,12 @@
 name: Run Tests
 
 on:
-  push
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, reopened]
+
 
 run-name: Run Tests
 
