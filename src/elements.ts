@@ -1,5 +1,5 @@
 import z from "zod/v4";
-import type { ConfigDefinition } from "./main.js";
+import type { ConfigDefinition } from "./main.ts";
 
 
 export const Elements = {
@@ -27,6 +27,6 @@ export const Elements = {
                 />`
             }
         }
-    }
+    },
 } as const;
 export default Elements;

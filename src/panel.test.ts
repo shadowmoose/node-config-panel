@@ -78,6 +78,14 @@ describe('Happy Path Tests', () => {
         assert.equal(conf.values.cat_2.test_enum, 'Salmon', 'Reassigned enum should have changed.' );
     });
 
+    it('Encrypted JSON works', ({ assert }) => {
+        conf.setRaw('cat_2', 'test_enum', 'Trout');
+        const encrypted = conf.toEncryptedString({ key: 'test_password' });
+        assert.notEqual(encrypted.length, 0, 'Encrypted string should not be empty');
+        conf.fromEncryptedString({ data: encrypted, key: 'test_password' });
+        assert.equal(conf.values.cat_2.test_enum, 'Trout', 'Reassigned enum should have changed.' );
+    });
+
     it('Values reference stays valid', ({ assert }) => {
         const values = conf.values;
         const testCat = values.test_cat;
