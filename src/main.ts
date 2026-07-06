@@ -44,6 +44,8 @@ export interface ConfigData {
      * If provided, uses this existing HTTP server instead of starting a new one.
      */
     existingServer: http.Server,
+    /** If set, require a password before serving any config values. */
+    serverCredentials?: { username: string, password: string },
 }
 
 async function openUrl(url: string) {
@@ -447,7 +449,13 @@ export class ConfigPanel <
 
     private async startWss(config: Partial<ConfigData>|undefined) {
         if (this.server) return;
-        this.server = config?.existingServer ?? http.createServer((_req, res) => {
+        this.server = config?.existingServer ?? http.createServer((req, res) => {
+            try {
+                validateLogin(req.headers.authorization, config?.serverCredentials);
+            } catch (err: any) {
+                res.writeHead(401, {'WWW-Authenticate': 'Basic realm="Config Panel"'});
+                return res.end(err.message);
+            }
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(
                 makePageHTML(
@@ -459,7 +467,12 @@ export class ConfigPanel <
             );
         });
         this.wss = new WebSocketServer({ server: this.server });
-        this.wss.on('connection',  (ws: WebSocket & { isAlive: boolean }) => {
+        this.wss.on('connection',  (ws: WebSocket & { isAlive: boolean, authed: boolean }, req) => {
+            try {
+                ws.authed = validateLogin(req.headers.authorization, config?.serverCredentials);
+            } catch (err: any) {
+                return ws.terminate();
+            }
             const sendParseError = (err: any, id: string, path: string[], rawValue: any) => {
                 const error = err.issues?.map((e: any) => e.message).join('; ') || err.message || err;
                 this.sendWss({ id, error });
@@ -530,7 +543,7 @@ export class ConfigPanel <
      */
     private sendWss(data: any) {
         this.wss?.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
+            if (client.readyState === WebSocket.OPEN && (client as any).authed) {
                 client.send(JSON.stringify(data));
             }
         });
@@ -1002,4 +1015,25 @@ function decrypt(encryptedPayload: string, password: string) {
     decrypted += decipher.final('utf8');
 
     return decrypted;
+}
+
+/**
+ * Validate that the given `Basic` header matches the provided credentials, raising an Error if they do not match.
+ */
+function validateLogin(authHeader?: string, credentials?: { username: string; password: string }): boolean {
+    if (!credentials) return true;
+    if (!authHeader) {
+        throw Error('Missing credentials!');
+    }
+    const authType = authHeader.split(' ')[0];
+    const token = authHeader.split(' ')[1];
+    if (authType === 'Basic' && token) {
+        const basic = Buffer.from(token, 'base64').toString('utf-8');
+        const [user, pass] = basic.split(':');
+
+        if (credentials.username === user && credentials.password === pass) {
+            return true;
+        }
+    }
+    throw Error('Invalid Credentials');
 }

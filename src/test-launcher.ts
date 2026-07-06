@@ -90,6 +90,8 @@ await conf
         displayMethod: 'browser', // 'browser' | 'none'
         port: 0, // Use random available port.
         host: '0.0.0.0', // Allow remote access for configuration.
+        serverCredentials: { username: 'test', password: 'password' },
+        unrefServer: false,
         htmlHeader: '<h1 style="text-align: center">Configuration Panel</h1>',
         htmlFooter: '<p style="font-size: small;text-align: center">Generated Panel Demo</p>',
     }, port => console.log(`Config panel running at http://localhost:${port}`));
